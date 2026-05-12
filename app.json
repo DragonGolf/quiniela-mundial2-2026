@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Quiniela Mundial 2026",
+    "slug": "quiniela-mundial-2026",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "quiniela",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a3a5c"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dragongolf.quiniela2026"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a3a5c"
+      },
+      "package": "com.dragongolf.quiniela2026",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
