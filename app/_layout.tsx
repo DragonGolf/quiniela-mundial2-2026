@@ -1,36 +1,51 @@
 import { useEffect } from 'react';
-import { Stack, router } from 'expo-router';
+import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View, ActivityIndicator } from 'react-native';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { LeagueProvider, useLeague } from '@/lib/league';
+import { Colors } from '@/constants/Colors';
 
-function RootNavigator() {
+function AuthGuard() {
   const { session, loading } = useAuth();
+  const { activeLeague } = useLeague();
+  const segments = useSegments();
+  const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
-    if (session) {
-      router.replace('/(tabs)');
-    } else {
-      router.replace('/(auth)/login');
-    }
-  }, [session, loading]);
+    const inAuth = segments[0] === '(auth)';
+    const inLigas = segments[0] === 'ligas';
+    const inCrearLiga = segments[0] === 'crear-liga';
+    const inUnirse = segments[0] === 'unirse';
 
-  return (
-    <>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="admin" />
-      </Stack>
-    </>
-  );
+    if (!session && !inAuth) {
+      router.replace('/(auth)/');
+    } else if (session && inAuth) {
+      router.replace('/ligas');
+    } else if (session && !inAuth && !inLigas && !inCrearLiga && !inUnirse && !activeLeague) {
+      router.replace('/ligas');
+    }
+  }, [session, loading, segments, activeLeague]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary }}>
+        <ActivityIndicator size="large" color={Colors.white} />
+      </View>
+    );
+  }
+
+  return <Slot />;
 }
 
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootNavigator />
+      <LeagueProvider>
+        <StatusBar style="light" />
+        <AuthGuard />
+      </LeagueProvider>
     </AuthProvider>
   );
 }

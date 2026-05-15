@@ -30,7 +30,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('*')
       .eq('id', userId)
       .single();
-    if (data) setProfile(data);
+
+    if (data) {
+      setProfile(data);
+      return;
+    }
+
+    // Perfil no existe aún — créalo automáticamente
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData?.user?.email ?? '';
+    const name = email.split('@')[0] || 'Jugador';
+
+    const { data: newProfile } = await supabase
+      .from('profiles')
+      .insert({ id: userId, name })
+      .select()
+      .single();
+
+    if (newProfile) setProfile(newProfile);
   }
 
   async function refreshProfile() {
@@ -40,8 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session?.user) loadProfile(session.user.id).finally(() => setLoading(false));
-      else setLoading(false);
+      if (session?.user) {
+        loadProfile(session.user.id).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {

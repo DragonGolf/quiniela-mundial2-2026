@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import {
   Modal, View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Alert,
+  StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { Match, Prediction } from '@/lib/types';
-import { savePrediction } from '@/lib/api';
+import { savePrediction, saveLeaguePredictionForMember } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 interface Props {
@@ -14,29 +14,42 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onSaved: (prediction: Prediction) => void;
+  memberId?: string;
 }
 
-export default function PredictionModal({ match, existing, visible, onClose, onSaved }: Props) {
+export default function PredictionModal({ match, existing, visible, onClose, onSaved, memberId }: Props) {
   const { profile } = useAuth();
-  const [home, setHome] = useState(existing ? String(existing.pred_home) : '');
-  const [away, setAway] = useState(existing ? String(existing.pred_away) : '');
+  const [home, setHome] = useState(existing ? String(existing.pred_home) : '0');
+  const [away, setAway] = useState(existing ? String(existing.pred_away) : '0');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleSave() {
+    setError('');
     const h = parseInt(home);
     const a = parseInt(away);
     if (isNaN(h) || isNaN(a) || h < 0 || a < 0) {
-      Alert.alert('Error', 'Ingresa marcadores válidos (números ≥ 0)');
+      setError('Ingresa marcadores válidos (números ≥ 0)');
       return;
     }
-    if (!profile) return;
+    if (!profile) {
+      setError('Sesión expirada, recarga la página');
+      return;
+    }
     setSaving(true);
     try {
-      const pred = await savePrediction(profile.id, match.id, h, a);
+      let pred: Prediction;
+      if (memberId) {
+        const lp = await saveLeaguePredictionForMember(memberId, match.id, h, a);
+        pred = lp as unknown as Prediction;
+      } else {
+        pred = await savePrediction(profile.id, match.id, h, a);
+      }
       onSaved(pred);
       onClose();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo guardar la predicción');
+      console.error('Error saving prediction:', e);
+      setError(e?.message || 'No se pudo guardar. Intenta de nuevo.');
     } finally {
       setSaving(false);
     }
@@ -57,7 +70,7 @@ export default function PredictionModal({ match, existing, visible, onClose, onS
               <TextInput
                 style={styles.input}
                 value={home}
-                onChangeText={setHome}
+                onChangeText={t => { setHome(t); setError(''); }}
                 keyboardType="number-pad"
                 maxLength={2}
                 placeholder="0"
@@ -70,7 +83,7 @@ export default function PredictionModal({ match, existing, visible, onClose, onS
               <TextInput
                 style={styles.input}
                 value={away}
-                onChangeText={setAway}
+                onChangeText={t => { setAway(t); setError(''); }}
                 keyboardType="number-pad"
                 maxLength={2}
                 placeholder="0"
@@ -79,10 +92,18 @@ export default function PredictionModal({ match, existing, visible, onClose, onS
             </View>
           </View>
 
-          <View style={styles.pointsInfo}>
-            <Text style={styles.pointsInfoText}>⚽ Marcador exacto = 3 pts</Text>
-            <Text style={styles.pointsInfoText}>✓ Resultado correcto = 1 pt</Text>
-          </View>
+          {error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>⚠️ {error}</Text>
+            </View>
+          ) : (
+            <View style={styles.pointsInfo}>
+              <Text style={styles.pointsInfoText}>🎯 Marcador exacto = 5 pts (3+2)</Text>
+              <Text style={styles.pointsInfoText}>✓ Resultado correcto = 3 pts</Text>
+              <Text style={styles.pointsInfoText}>⚽ Goles de un equipo = +1 pt</Text>
+              <Text style={styles.pointsInfoText}>↔ Diferencia correcta = +1 pt</Text>
+            </View>
+          )}
 
           <View style={styles.buttons}>
             <TouchableOpacity style={styles.btnCancel} onPress={onClose}>
@@ -128,6 +149,8 @@ const styles = StyleSheet.create({
   dash: { fontSize: 32, fontWeight: '700', color: Colors.textSecondary },
   pointsInfo: { backgroundColor: '#f0f2f5', borderRadius: 10, padding: 12, marginBottom: 24, gap: 4 },
   pointsInfoText: { fontSize: 13, color: Colors.textSecondary, textAlign: 'center' },
+  errorBox: { backgroundColor: '#fff0f0', borderRadius: 10, padding: 12, marginBottom: 24, borderWidth: 1, borderColor: '#ffcccc' },
+  errorText: { fontSize: 13, color: Colors.accent, textAlign: 'center', fontWeight: '600' },
   buttons: { flexDirection: 'row', gap: 12 },
   btnCancel: {
     flex: 1, height: 50, borderRadius: 12, borderWidth: 1.5,

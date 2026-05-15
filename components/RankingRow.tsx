@@ -21,15 +21,18 @@ export default function RankingRow({ entry, rank, isMe }: Props) {
           <Text style={styles.rankText}>{rank}</Text>
         )}
       </View>
-      <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>
-        {entry.name}
-        {isMe && ' (tú)'}
-      </Text>
-      <View style={styles.stats}>
-        <Text style={styles.statSmall}>{entry.exact_scores}✓✓</Text>
-        <Text style={styles.statSmall}>{entry.correct_results}✓</Text>
-        <Text style={[styles.points, isMe && styles.pointsMe]}>{entry.total_points} pts</Text>
+      <View style={styles.nameCol}>
+        <Text style={[styles.name, isMe && styles.nameMe]} numberOfLines={1}>
+          {entry.name}{isMe ? ' (tú)' : ''}
+        </Text>
+        <Text style={styles.breakdown}>
+          {entry.match_points}p
+          {(entry.group_points ?? 0) > 0 ? ` +${entry.group_points}g` : ''}
+          {(entry.podium_points ?? 0) > 0 ? ` +${entry.podium_points}pod` : ''}
+          {(entry.scorer_points ?? 0) > 0 ? ` +${entry.scorer_points}gol` : ''}
+        </Text>
       </View>
+      <Text style={[styles.points, isMe && styles.pointsMe]}>{entry.total_points} pts</Text>
     </View>
   );
 }
@@ -52,10 +55,10 @@ const styles = StyleSheet.create({
   rankCell: { width: 36, alignItems: 'center' },
   medal: { fontSize: 20 },
   rankText: { fontSize: 16, fontWeight: '700', color: Colors.textSecondary },
-  name: { flex: 1, fontSize: 15, color: Colors.text, marginLeft: 8 },
+  nameCol: { flex: 1, marginLeft: 8 },
+  name: { fontSize: 15, color: Colors.text },
   nameMe: { fontWeight: '700', color: Colors.primary },
-  stats: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  statSmall: { fontSize: 11, color: Colors.textSecondary },
-  points: { fontSize: 16, fontWeight: '700', color: Colors.text, minWidth: 60, textAlign: 'right' },
+  breakdown: { fontSize: 10, color: Colors.textSecondary, marginTop: 1 },
+  points: { fontSize: 16, fontWeight: '700', color: Colors.text, minWidth: 54, textAlign: 'right' },
   pointsMe: { color: Colors.primary },
 });

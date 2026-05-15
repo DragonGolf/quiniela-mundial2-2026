@@ -4,10 +4,12 @@ import {
   ActivityIndicator, SectionList,
 } from 'react-native';
 import { useAuth } from '@/lib/auth';
-import { getMatches } from '@/lib/api';
+import { useLeague } from '@/lib/league';
+import { getMatches, getLeagueMatchesForMember } from '@/lib/api';
 import { MatchWithPrediction, Prediction } from '@/lib/types';
 import MatchCard from '@/components/MatchCard';
 import PredictionModal from '@/components/PredictionModal';
+import LivePredictionsModal from '@/components/LivePredictionsModal';
 import EmptyState from '@/components/EmptyState';
 import { Colors } from '@/constants/Colors';
 
@@ -25,15 +27,22 @@ function groupByDate(matches: MatchWithPrediction[]) {
 
 export default function MatchesScreen() {
   const { profile } = useAuth();
+  const { activeLeague } = useLeague();
   const [matches, setMatches] = useState<MatchWithPrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<MatchWithPrediction | null>(null);
+  const [liveSelected, setLiveSelected] = useState<MatchWithPrediction | null>(null);
 
   async function load() {
     if (!profile) return;
     try {
-      const data = await getMatches(profile.id);
+      let data: MatchWithPrediction[];
+      if (activeLeague?.member_id) {
+        data = await getLeagueMatchesForMember(activeLeague.member_id);
+      } else {
+        data = await getMatches(profile.id);
+      }
       setMatches(data);
     } catch (e) {
       console.error(e);
@@ -43,9 +52,9 @@ export default function MatchesScreen() {
     }
   }
 
-  useEffect(() => { load(); }, [profile]);
+  useEffect(() => { load(); }, [profile, activeLeague?.member_id]);
 
-  const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [profile]);
+  const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [profile, activeLeague?.member_id]);
 
   function handlePredictionSaved(pred: Prediction) {
     setMatches(prev =>
@@ -53,8 +62,15 @@ export default function MatchesScreen() {
     );
   }
 
+  function isMatchLocked(match: MatchWithPrediction): boolean {
+    if (match.status !== 'upcoming') return true;
+    const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
+    return minsUntil < 60; // lock 1 hour before
+  }
+
   function handlePress(match: MatchWithPrediction) {
-    if (match.status === 'upcoming') setSelected(match);
+    if (!isMatchLocked(match)) setSelected(match);
+    else setLiveSelected(match);
   }
 
   const sections = groupByDate(matches);
@@ -103,8 +119,15 @@ export default function MatchesScreen() {
           visible={!!selected}
           onClose={() => setSelected(null)}
           onSaved={handlePredictionSaved}
+          memberId={activeLeague?.member_id}
         />
       )}
+
+      <LivePredictionsModal
+        match={liveSelected}
+        visible={!!liveSelected}
+        onClose={() => setLiveSelected(null)}
+      />
     </View>
   );
 }

@@ -4,21 +4,24 @@ import {
   ActivityIndicator, FlatList,
 } from 'react-native';
 import { useAuth } from '@/lib/auth';
-import { getRanking } from '@/lib/api';
-import { RankingEntry } from '@/lib/types';
+import { useLeague } from '@/lib/league';
+import { getLeagueRanking } from '@/lib/api';
+import { LeagueRankingEntry } from '@/lib/types';
 import RankingRow from '@/components/RankingRow';
 import EmptyState from '@/components/EmptyState';
 import { Colors } from '@/constants/Colors';
 
 export default function RankingScreen() {
   const { profile } = useAuth();
-  const [ranking, setRanking] = useState<RankingEntry[]>([]);
+  const { activeLeague } = useLeague();
+  const [ranking, setRanking] = useState<LeagueRankingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   async function load() {
+    if (!activeLeague) return;
     try {
-      const data = await getRanking();
+      const data = await getLeagueRanking(activeLeague.id);
       setRanking(data);
     } catch (e) {
       console.error(e);
@@ -28,11 +31,11 @@ export default function RankingScreen() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [activeLeague]);
 
-  const onRefresh = useCallback(() => { setRefreshing(true); load(); }, []);
+  const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [activeLeague]);
 
-  const myRank = ranking.findIndex(e => e.user_id === profile?.id) + 1;
+  const myRank = ranking.findIndex((e: LeagueRankingEntry) => e.user_id === profile?.id) + 1;
 
   if (loading) {
     return (
@@ -62,9 +65,8 @@ export default function RankingScreen() {
       <View style={styles.columnHeaders}>
         <Text style={[styles.colHeader, { width: 36 }]}>#</Text>
         <Text style={[styles.colHeader, { flex: 1, marginLeft: 8 }]}>Jugador</Text>
-        <Text style={[styles.colHeader, { marginRight: 4 }]}>Exactos</Text>
-        <Text style={[styles.colHeader, { marginRight: 4 }]}>Aciertos</Text>
-        <Text style={[styles.colHeader, { minWidth: 60, textAlign: 'right' }]}>Puntos</Text>
+        <Text style={[styles.colHeader, { marginRight: 10 }]}>Partidos</Text>
+        <Text style={[styles.colHeader, { minWidth: 54, textAlign: 'right' }]}>Total</Text>
       </View>
       <FlatList
         data={ranking}

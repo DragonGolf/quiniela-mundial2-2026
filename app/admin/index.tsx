@@ -1,39 +1,140 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  RefreshControl, ActivityIndicator, Alert, TextInput, Modal,
+  RefreshControl, ActivityIndicator, TextInput, Modal, ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { triggerMatchSync, adminUpdateMatch } from '@/lib/api';
+import { triggerMatchSync, adminUpdateMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById } from '@/lib/api';
+import { GroupResult, LeagueMember } from '@/lib/types';
+import { TournamentResult, Match } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
-import { Match } from '@/lib/types';
+import { useLeague } from '@/lib/league';
 import { Colors, StatusLabels } from '@/constants/Colors';
+
+// Entry con info de liga incluida
+interface EntryWithLeague extends LeagueMember {
+  profile: { name: string };
+  league: { name: string; code: string };
+}
+
+// Agrupa entradas por usuario (nombre real)
+interface UserWithEntries {
+  userId: string;
+  realName: string;
+  entries: EntryWithLeague[];
+}
 
 export default function AdminScreen() {
   const { profile } = useAuth();
+  const { activeLeague } = useLeague();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState<Match | null>(null);
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
   const [newStatus, setNewStatus] = useState<'upcoming' | 'live' | 'finished'>('live');
+  const [tournamentResult, setTournamentResult] = useState<TournamentResult | null>(null);
+  const [trChampion, setTrChampion] = useState('');
+  const [trRunnerUp, setTrRunnerUp] = useState('');
+  const [trThird, setTrThird] = useState('');
+  const [trScorer, setTrScorer] = useState('');
+  const [savingTr, setSavingTr] = useState(false);
+  const [trMsg, setTrMsg] = useState('');
+  const [groupTeams, setGroupTeams] = useState<Record<string, { team: string; flag: string }[]>>({});
+  const [groupResults, setGroupResults] = useState<Record<string, { first: string; second: string }>>({});
+  const [savingGroups, setSavingGroups] = useState(false);
+  const [groupMsg, setGroupMsg] = useState('');
+  const [usersWithEntries, setUsersWithEntries] = useState<UserWithEntries[]>([]);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [paidMsg, setPaidMsg] = useState('');
+  const [matchMsg, setMatchMsg] = useState('');
+  const [totalMatches, setTotalMatches] = useState(0);
+  // memberId → { matchPreds, hasGroups, hasPodio }
+  const [predStats, setPredStats] = useState<Record<string, { matchPreds: number; hasGroups: boolean; hasPodio: boolean }>>({});
+  // userId → email
+  const [emailMap, setEmailMap] = useState<Record<string, string>>({});
+  // userId expandido para ver detalle
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile && !profile.is_admin) {
-      Alert.alert('Sin acceso', 'Solo administradores pueden entrar aquí');
       router.back();
     }
   }, [profile]);
 
   async function load() {
-    const { data } = await supabase
-      .from('matches')
-      .select('*')
-      .order('match_date', { ascending: true });
-    setMatches(data || []);
+    const [{ data: matchData }, tr, teams, groupRes, { data: allMembers }] = await Promise.all([
+      supabase.from('matches').select('*').order('match_date', { ascending: true }),
+      getTournamentResults(),
+      getGroupTeams(),
+      getGroupResults(),
+      supabase
+        .from('league_members')
+        .select('*, profile:profiles(name), league:leagues(name, code)')
+        .order('user_id'),
+    ]);
+
+    setMatches(matchData || []);
+    setTotalMatches((matchData || []).length);
+    setGroupTeams(teams);
+    setTournamentResult(tr);
+    if (tr) {
+      setTrChampion(tr.champion || '');
+      setTrRunnerUp(tr.runner_up || '');
+      setTrThird(tr.third_place || '');
+      setTrScorer((tr as any).top_scorer || '');
+    }
+    const resMap: Record<string, { first: string; second: string }> = {};
+    for (const r of groupRes) resMap[r.group_name] = { first: r.first_place || '', second: r.second_place || '' };
+    setGroupResults(resMap);
+
+    if (allMembers && allMembers.length > 0) {
+      // Agrupa miembros por usuario
+      const userMap = new Map<string, UserWithEntries>();
+      for (const m of allMembers as EntryWithLeague[]) {
+        const uid = m.user_id;
+        if (!userMap.has(uid)) {
+          userMap.set(uid, { userId: uid, realName: (m.profile as any)?.name ?? 'Jugador', entries: [] });
+        }
+        userMap.get(uid)!.entries.push(m);
+      }
+      setUsersWithEntries(Array.from(userMap.values()).sort((a, b) => a.realName.localeCompare(b.realName)));
+
+      // Fetch emails via admin RPC
+      const { data: emailData } = await supabase.rpc('admin_get_user_emails');
+      if (emailData) {
+        const em: Record<string, string> = {};
+        for (const row of emailData) em[row.id] = row.email ?? '';
+        setEmailMap(em);
+      }
+
+      // Fetch prediction stats for all member IDs
+      const memberIds = allMembers.map((m: any) => m.id);
+      const [{ data: matchPredData }, { data: groupPredData }, { data: podioPredData }] = await Promise.all([
+        supabase.from('league_predictions').select('league_member_id').in('league_member_id', memberIds),
+        supabase.from('member_group_predictions').select('league_member_id').in('league_member_id', memberIds),
+        supabase.from('member_podium_predictions').select('league_member_id').in('league_member_id', memberIds),
+      ]);
+
+      // Build stats map
+      const stats: Record<string, { matchPreds: number; hasGroups: boolean; hasPodio: boolean }> = {};
+      for (const id of memberIds) stats[id] = { matchPreds: 0, hasGroups: false, hasPodio: false };
+      for (const p of matchPredData ?? []) {
+        if (stats[p.league_member_id]) stats[p.league_member_id].matchPreds++;
+      }
+      for (const p of groupPredData ?? []) {
+        if (stats[p.league_member_id]) stats[p.league_member_id].hasGroups = true;
+      }
+      for (const p of podioPredData ?? []) {
+        if (stats[p.league_member_id]) stats[p.league_member_id].hasPodio = true;
+      }
+      setPredStats(stats);
+    }
+
     setLoading(false);
     setRefreshing(false);
   }
@@ -43,12 +144,13 @@ export default function AdminScreen() {
 
   async function handleSync() {
     setSyncing(true);
+    setSyncResult('');
     try {
-      await triggerMatchSync();
+      const { inserted, updated } = await triggerMatchSync();
       await load();
-      Alert.alert('✅ Sincronizado', 'Los partidos se actualizaron correctamente');
+      setSyncResult(`✅ Listo: ${inserted} partidos nuevos, ${updated} actualizados`);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo sincronizar');
+      setSyncResult(`❌ Error: ${e.message || 'No se pudo sincronizar'}`);
     } finally {
       setSyncing(false);
     }
@@ -61,21 +163,68 @@ export default function AdminScreen() {
     setNewStatus(match.status as any);
   }
 
+  async function handleSaveTournamentResults() {
+    setSavingTr(true);
+    setTrMsg('');
+    try {
+      await saveTournamentResults(trChampion || null, trRunnerUp || null, trThird || null, trScorer || null);
+      setTrMsg('✅ Resultados guardados');
+      await load();
+    } catch (e: any) {
+      setTrMsg('❌ Error: ' + e.message);
+    } finally {
+      setSavingTr(false);
+    }
+  }
+
+  async function handleToggleEntryPaid(memberId: string, currentPaid: boolean) {
+    setTogglingId(memberId);
+    setPaidMsg('');
+    try {
+      await setLeagueMemberPaidById(memberId, !currentPaid);
+      setUsersWithEntries(prev => prev.map(u => ({
+        ...u,
+        entries: u.entries.map(e => e.id === memberId ? { ...e, is_paid: !currentPaid } : e),
+      })));
+      setPaidMsg('✅ Guardado');
+      setTimeout(() => setPaidMsg(''), 2000);
+    } catch (e: any) {
+      setPaidMsg('❌ Error: ' + (e?.message || JSON.stringify(e)));
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  async function handleSaveGroupResults() {
+    setSavingGroups(true);
+    setGroupMsg('');
+    try {
+      const entries = Object.entries(groupResults).filter(([, { first, second }]) => first && second);
+      await Promise.all(entries.map(([g, { first, second }]) => saveGroupResult(g, first, second)));
+      setGroupMsg(`✅ ${entries.length} grupos guardados`);
+    } catch (e: any) {
+      setGroupMsg('❌ Error: ' + e.message);
+    } finally {
+      setSavingGroups(false);
+    }
+  }
+
   async function handleUpdateMatch() {
     if (!editing) return;
     const h = parseInt(homeScore);
     const a = parseInt(awayScore);
     if (isNaN(h) || isNaN(a)) {
-      Alert.alert('Error', 'Ingresa marcadores válidos');
+      setMatchMsg('❌ Ingresa marcadores válidos');
       return;
     }
+    setMatchMsg('Guardando...');
     try {
       await adminUpdateMatch(editing.id, h, a, newStatus);
+      setMatchMsg('');
       setEditing(null);
       await load();
-      Alert.alert('✅ Actualizado', 'Partido actualizado y puntos recalculados');
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      setMatchMsg('❌ Error: ' + (e?.message || JSON.stringify(e)));
     }
   }
 
@@ -83,22 +232,206 @@ export default function AdminScreen() {
     return <View style={styles.center}><ActivityIndicator size="large" color={Colors.gold} /></View>;
   }
 
-  return (
-    <View style={styles.container}>
-      <TouchableOpacity style={styles.syncBtn} onPress={handleSync} disabled={syncing}>
-        {syncing ? (
-          <ActivityIndicator color={Colors.white} />
-        ) : (
-          <Text style={styles.syncBtnText}>🔄 Sincronizar con API (football-data.org)</Text>
-        )}
-      </TouchableOpacity>
+  const paidCount = usersWithEntries.reduce((sum, u) => sum + u.entries.filter(e => e.is_paid).length, 0);
+  const totalEntries = usersWithEntries.reduce((sum, u) => sum + u.entries.length, 0);
 
+  const listHeader = (
+    <>
+      {/* Payment management */}
+      <View style={styles.trSection}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.trTitle}>💳 Gestión de Pagos</Text>
+          <Text style={styles.paidCounter}>{paidCount}/{totalEntries} pagados</Text>
+        </View>
+        <Text style={styles.trHint}>Todos los jugadores registrados · Toca para aprobar/quitar pago por quiniela</Text>
+        {paidMsg ? (
+          <Text style={[styles.paidMsg, { color: paidMsg.startsWith('✅') ? '#2e7d32' : Colors.accent }]}>{paidMsg}</Text>
+        ) : null}
+        {usersWithEntries.length === 0 ? (
+          <Text style={styles.trHint}>No hay jugadores registrados aún.</Text>
+        ) : (
+          usersWithEntries.map(user => {
+            const leagueNames = [...new Set(user.entries.map(e => (e.league as any)?.name ?? 'Liga'))];
+            const isExpanded = expandedUser === user.userId;
+            const email = emailMap[user.userId] ?? '';
+            return (
+              <View key={user.userId} style={styles.userBlock}>
+                {/* Cabecera de usuario — toca para ver detalle */}
+                <TouchableOpacity
+                  style={styles.userHeader}
+                  onPress={() => setExpandedUser(isExpanded ? null : user.userId)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.userAvatar}>
+                    <Text style={styles.userAvatarText}>{user.realName[0]?.toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.userName}>{user.realName}</Text>
+                    <Text style={styles.userLeaguesSub}>{leagueNames.join(' · ')}</Text>
+                  </View>
+                  <Text style={styles.entryCount}>
+                    {user.entries.length} quiniela{user.entries.length > 1 ? 's' : ''}
+                  </Text>
+                  <Text style={styles.expandChevron}>{isExpanded ? ' ▲' : ' ▼'}</Text>
+                </TouchableOpacity>
+
+                {/* Detalle expandido */}
+                {isExpanded && (
+                  <View style={styles.userDetail}>
+                    <View style={styles.userDetailRow}>
+                      <Text style={styles.userDetailLabel}>Nombre</Text>
+                      <Text style={styles.userDetailValue}>{user.realName}</Text>
+                    </View>
+                    <View style={styles.userDetailRow}>
+                      <Text style={styles.userDetailLabel}>Correo</Text>
+                      <Text style={styles.userDetailValue} selectable>{email || '—'}</Text>
+                    </View>
+                    <View style={styles.userDetailRow}>
+                      <Text style={styles.userDetailLabel}>Quinielas</Text>
+                      <Text style={styles.userDetailValue}>{user.entries.length}</Text>
+                    </View>
+                    <View style={[styles.userDetailRow, { borderBottomWidth: 0 }]}>
+                      <Text style={styles.userDetailLabel}>Pagadas</Text>
+                      <Text style={[styles.userDetailValue, { color: Colors.green, fontWeight: '700' }]}>
+                        {user.entries.filter(e => e.is_paid).length}/{user.entries.length}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {/* Quinielas */}
+                {user.entries.map(entry => {
+                  const ps = predStats[entry.id] ?? { matchPreds: 0, hasGroups: false, hasPodio: false };
+                  const hasAny = ps.matchPreds > 0 || ps.hasGroups || ps.hasPodio;
+                  const allDone = ps.matchPreds === totalMatches && ps.hasGroups && ps.hasPodio;
+                  return (
+                    <View key={entry.id} style={styles.entryRow}>
+                      <View style={styles.entryInfo}>
+                        <Text style={styles.entryAlias}>🎯 {entry.alias || 'Sin nombre'}</Text>
+                        <Text style={styles.entryLeagueName}>
+                          {(entry.league as any)?.name ?? ''}{entry.is_admin ? ' · Admin' : ''}
+                        </Text>
+                        {/* Prediction progress */}
+                        <View style={styles.predRow}>
+                          <View style={[styles.predDot, allDone ? styles.predDotGreen : hasAny ? styles.predDotYellow : styles.predDotRed]} />
+                          <Text style={styles.predText}>
+                            ⚽ {ps.matchPreds}/{totalMatches}
+                            {'  '}🗂 {ps.hasGroups ? '✓' : '✗'}
+                            {'  '}🏆 {ps.hasPodio ? '✓' : '✗'}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.paidToggle, entry.is_paid && styles.paidToggleOn]}
+                        onPress={() => handleToggleEntryPaid(entry.id, entry.is_paid)}
+                        disabled={togglingId === entry.id}
+                      >
+                        {togglingId === entry.id
+                          ? <ActivityIndicator size="small" color={Colors.white} />
+                          : <Text style={[styles.paidToggleText, entry.is_paid && styles.paidToggleTextOn]}>
+                              {entry.is_paid ? '✓ Pagó' : 'Sin pago'}
+                            </Text>
+                        }
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })
+        )}
+      </View>
+
+      {/* Tournament results */}
+      <View style={styles.trSection}>
+        <Text style={styles.trTitle}>🏆 Resultados Finales del Torneo</Text>
+        <Text style={styles.trHint}>Llena al terminar el torneo para calcular puntos del podio y goleador</Text>
+        {[
+          { label: '🏆 Campeón', value: trChampion, set: setTrChampion },
+          { label: '🥈 Subcampeón', value: trRunnerUp, set: setTrRunnerUp },
+          { label: '🥉 3er Lugar', value: trThird, set: setTrThird },
+          { label: '⚽ Goleador', value: trScorer, set: setTrScorer },
+        ].map(({ label, value, set }) => (
+          <View key={label} style={styles.trRow}>
+            <Text style={styles.trLabel}>{label}</Text>
+            <TextInput
+              style={styles.trInput}
+              value={value}
+              onChangeText={set}
+              placeholder={label.includes('Goleador') ? 'Nombre del jugador' : 'Nombre del equipo'}
+              placeholderTextColor={Colors.textSecondary}
+            />
+          </View>
+        ))}
+        {trMsg ? <Text style={[styles.paidMsg, { color: trMsg.startsWith('✅') ? '#2e7d32' : Colors.accent }]}>{trMsg}</Text> : null}
+        <TouchableOpacity style={styles.trSaveBtn} onPress={handleSaveTournamentResults} disabled={savingTr}>
+          {savingTr ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.trSaveBtnText}>Guardar Resultados</Text>}
+        </TouchableOpacity>
+      </View>
+
+      {/* Group results */}
+      <View style={styles.trSection}>
+        <Text style={styles.trTitle}>🗂 Resultados por Grupo</Text>
+        <Text style={styles.trHint}>Llena al terminar la fase de grupos (4 pts por equipo que clasificó correcto)</Text>
+        {Object.keys(groupTeams).sort().map(groupName => {
+          const sel = groupResults[groupName] || { first: '', second: '' };
+          const teams = groupTeams[groupName] || [];
+          return (
+            <View key={groupName} style={styles.groupResultRow}>
+              <Text style={styles.groupLabel}>Grupo {groupName}</Text>
+              <View style={styles.groupSelectors}>
+                <View style={styles.groupSelectorCol}>
+                  <Text style={styles.groupSelectorTitle}>🥇 1ro</Text>
+                  {teams.map(({ team, flag }) => (
+                    <TouchableOpacity
+                      key={team}
+                      style={[styles.groupTeamBtn, sel.first === team && styles.groupTeamBtnFirst]}
+                      onPress={() => setGroupResults(prev => ({ ...prev, [groupName]: { ...sel, first: team } }))}
+                    >
+                      <Text style={styles.groupTeamBtnText}>{flag} {team.split(' ')[0]}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.groupSelectorCol}>
+                  <Text style={styles.groupSelectorTitle}>🥈 2do</Text>
+                  {teams.map(({ team, flag }) => (
+                    <TouchableOpacity
+                      key={team}
+                      style={[styles.groupTeamBtn, sel.second === team && styles.groupTeamBtnSecond]}
+                      onPress={() => setGroupResults(prev => ({ ...prev, [groupName]: { ...sel, second: team } }))}
+                    >
+                      <Text style={styles.groupTeamBtnText}>{flag} {team.split(' ')[0]}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+          );
+        })}
+        {groupMsg ? <Text style={[styles.paidMsg, { color: groupMsg.startsWith('✅') ? '#2e7d32' : Colors.accent }]}>{groupMsg}</Text> : null}
+        <TouchableOpacity style={styles.trSaveBtn} onPress={handleSaveGroupResults} disabled={savingGroups}>
+          {savingGroups ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.trSaveBtnText}>Guardar Resultados de Grupos</Text>}
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity style={styles.syncBtn} onPress={handleSync} disabled={syncing}>
+        {syncing ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.syncBtnText}>🔄 Sincronizar partidos con API</Text>}
+      </TouchableOpacity>
+      {syncResult ? (
+        <View style={[styles.resultBox, syncResult.startsWith('❌') && styles.resultBoxError]}>
+          <Text style={styles.resultText}>{syncResult}</Text>
+        </View>
+      ) : null}
       <Text style={styles.sectionTitle}>Partidos ({matches.length})</Text>
       <Text style={styles.hint}>Toca un partido para actualizar su marcador manualmente</Text>
+    </>
+  );
 
+  return (
+    <View style={styles.container}>
       <FlatList
         data={matches}
         keyExtractor={item => String(item.id)}
+        ListHeaderComponent={listHeader}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.matchRow} onPress={() => openEdit(item)}>
             <View style={styles.matchInfo}>
@@ -170,8 +503,9 @@ export default function AdminScreen() {
               ))}
             </View>
 
+            {matchMsg ? <Text style={{ textAlign: 'center', marginBottom: 10, fontWeight: '600', color: matchMsg.startsWith('❌') ? 'red' : Colors.textSecondary }}>{matchMsg}</Text> : null}
             <View style={styles.editButtons}>
-              <TouchableOpacity style={styles.editCancel} onPress={() => setEditing(null)}>
+              <TouchableOpacity style={styles.editCancel} onPress={() => { setEditing(null); setMatchMsg(''); }}>
                 <Text style={styles.editCancelText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.editSave} onPress={handleUpdateMatch}>
@@ -186,6 +520,37 @@ export default function AdminScreen() {
 }
 
 const styles = StyleSheet.create({
+  trSection: { margin: 16, marginBottom: 8, backgroundColor: Colors.card, borderRadius: 12, padding: 16 },
+  trTitle: { fontSize: 15, fontWeight: '700', color: Colors.text, marginBottom: 4 },
+  trHint: { fontSize: 12, color: Colors.textSecondary, marginBottom: 12 },
+  trRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  trLabel: { fontSize: 13, fontWeight: '600', color: Colors.text, width: 110 },
+  trInput: {
+    flex: 1, height: 38, borderRadius: 8, borderWidth: 1.5, borderColor: Colors.border,
+    paddingHorizontal: 10, fontSize: 13, color: Colors.text, backgroundColor: Colors.background,
+  },
+  trSaveBtn: {
+    height: 44, borderRadius: 10, backgroundColor: Colors.gold,
+    alignItems: 'center', justifyContent: 'center', marginTop: 8,
+  },
+  trSaveBtnText: { fontSize: 15, fontWeight: '700', color: Colors.white },
+  userRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  userInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  userName: { fontSize: 15, color: Colors.text, fontWeight: '500' },
+  adminTag: { fontSize: 10, color: Colors.gold, fontWeight: '700', backgroundColor: '#fff3cd', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  paidToggle: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background, minWidth: 80, alignItems: 'center' },
+  paidToggleOn: { backgroundColor: Colors.green, borderColor: Colors.green },
+  paidToggleText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  paidToggleTextOn: { color: Colors.white },
+  groupResultRow: { marginBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border, paddingBottom: 12 },
+  groupLabel: { fontSize: 14, fontWeight: '700', color: Colors.text, marginBottom: 6 },
+  groupSelectors: { flexDirection: 'row', gap: 8 },
+  groupSelectorCol: { flex: 1, gap: 4 },
+  groupSelectorTitle: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, marginBottom: 2 },
+  groupTeamBtn: { paddingVertical: 5, paddingHorizontal: 6, borderRadius: 6, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.background },
+  groupTeamBtnFirst: { borderColor: Colors.gold, backgroundColor: '#fffde7' },
+  groupTeamBtnSecond: { borderColor: Colors.textSecondary, backgroundColor: '#f5f5f5' },
+  groupTeamBtnText: { fontSize: 11, color: Colors.text, fontWeight: '500' },
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   syncBtn: {
@@ -195,6 +560,9 @@ const styles = StyleSheet.create({
   syncBtnText: { color: Colors.white, fontWeight: '700', fontSize: 15 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.text, paddingHorizontal: 16, marginBottom: 4 },
   hint: { fontSize: 12, color: Colors.textSecondary, paddingHorizontal: 16, marginBottom: 8 },
+  resultBox: { marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 10, backgroundColor: '#e8f5e9' },
+  resultBoxError: { backgroundColor: '#fff0f0' },
+  resultText: { fontSize: 14, fontWeight: '600', color: Colors.text, textAlign: 'center' },
   list: { paddingHorizontal: 8, paddingBottom: 32 },
   matchRow: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card,
@@ -231,4 +599,33 @@ const styles = StyleSheet.create({
   editCancelText: { fontSize: 16, color: Colors.textSecondary, fontWeight: '600' },
   editSave: { flex: 1, height: 50, borderRadius: 12, backgroundColor: Colors.gold, alignItems: 'center', justifyContent: 'center' },
   editSaveText: { fontSize: 16, color: Colors.white, fontWeight: '700' },
+  // Payment section
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  paidCounter: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  paidMsg: { fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 4, marginBottom: 4 },
+  userBlock: { backgroundColor: Colors.background, borderRadius: 10, marginBottom: 8, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border },
+  userHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#f8f9ff', gap: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  userAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  userAvatarText: { fontSize: 14, fontWeight: '700', color: Colors.white },
+  userLeaguesSub: { fontSize: 11, color: Colors.textSecondary, marginTop: 1 },
+  entryCount: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600' },
+  expandChevron: { fontSize: 11, color: Colors.textSecondary, marginLeft: 4 },
+  userDetail: { backgroundColor: '#f0f4ff', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  userDetailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  userDetailLabel: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
+  userDetailValue: { fontSize: 12, color: Colors.text, fontWeight: '500', maxWidth: '65%', textAlign: 'right' },
+  entryRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 10 },
+  entryInfo: { flex: 1 },
+  entryAlias: { fontSize: 14, color: Colors.text, fontWeight: '600' },
+  entryLeagueName: { fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
+  predRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+  predDot: { width: 7, height: 7, borderRadius: 4 },
+  predDotGreen: { backgroundColor: '#4caf50' },
+  predDotYellow: { backgroundColor: '#ff9800' },
+  predDotRed: { backgroundColor: '#f44336' },
+  predText: { fontSize: 11, color: Colors.textSecondary },
+  noLeagueBox: { alignItems: 'center', paddingVertical: 16, gap: 12 },
+  noLeagueText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
+  goLigasBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.primary },
+  goLigasBtnText: { fontSize: 14, color: Colors.white, fontWeight: '700' },
 });

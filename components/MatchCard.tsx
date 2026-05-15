@@ -2,10 +2,28 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, StatusLabels, StageLabels } from '@/constants/Colors';
 import { MatchWithPrediction } from '@/lib/types';
+import FlagImage from './FlagImage';
 
 interface Props {
   match: MatchWithPrediction;
   onPress: () => void;
+}
+
+function getCardBg(match: MatchWithPrediction): string {
+  const hasPred = !!match.my_prediction;
+  const pts = match.my_prediction?.points;
+  if (match.status === 'finished' && hasPred) {
+    return (pts ?? 0) > 0 ? '#e8f5e9' : '#ffebee'; // strong green or red
+  }
+  if (hasPred) return '#f1f8e9'; // soft green — prediction filled
+  if (match.status === 'upcoming') return '#fce4ec'; // pink — not filled
+  return '#ffffff';
+}
+
+function isWithin1Hour(match: MatchWithPrediction): boolean {
+  if (match.status !== 'upcoming') return false;
+  const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
+  return minsUntil < 60;
 }
 
 export default function MatchCard({ match, onPress }: Props) {
@@ -13,6 +31,7 @@ export default function MatchCard({ match, onPress }: Props) {
   const isLive = match.status === 'live';
   const isFinished = match.status === 'finished';
   const hasPrediction = !!match.my_prediction;
+  const isLocked = isWithin1Hour(match);
 
   function getPoints() {
     if (!hasPrediction || isUpcoming) return null;
@@ -23,7 +42,7 @@ export default function MatchCard({ match, onPress }: Props) {
 
   return (
     <TouchableOpacity
-      style={[styles.card, isLive && styles.cardLive]}
+      style={[styles.card, isLive && styles.cardLive, { backgroundColor: getCardBg(match) }]}
       onPress={onPress}
       activeOpacity={0.85}
     >
@@ -42,8 +61,8 @@ export default function MatchCard({ match, onPress }: Props) {
       {/* Teams and score */}
       <View style={styles.teamsRow}>
         <View style={styles.team}>
-          <Text style={styles.flag}>{match.home_flag}</Text>
-          <Text style={styles.teamName} numberOfLines={1}>{match.home_team}</Text>
+          <FlagImage flag={match.home_flag} size={28} />
+          <Text style={styles.teamName} numberOfLines={2}>{match.home_team}</Text>
         </View>
 
         <View style={styles.scoreBlock}>
@@ -62,8 +81,8 @@ export default function MatchCard({ match, onPress }: Props) {
         </View>
 
         <View style={[styles.team, styles.teamRight]}>
-          <Text style={styles.flag}>{match.away_flag}</Text>
-          <Text style={styles.teamName} numberOfLines={1}>{match.away_team}</Text>
+          <FlagImage flag={match.away_flag} size={28} />
+          <Text style={styles.teamName} numberOfLines={2}>{match.away_team}</Text>
         </View>
       </View>
 
@@ -76,18 +95,21 @@ export default function MatchCard({ match, onPress }: Props) {
             </Text>
             {points !== null && (
               <View style={[styles.pointsBadge,
-                points === 3 && styles.pointsExact,
-                points === 1 && styles.pointsCorrect,
+                points >= 7 && styles.pointsExact,
+                points >= 3 && points < 7 && styles.pointsCorrect,
+                points > 0 && points < 3 && styles.pointsPartial,
                 points === 0 && styles.pointsWrong,
               ]}>
                 <Text style={styles.pointsText}>
-                  {points === 3 ? '🎯 3 pts' : points === 1 ? '✓ 1 pt' : '0 pts'}
+                  {points >= 7 ? '🎯 ' : points >= 3 ? '✓ ' : ''}{points} pt{points === 1 ? '' : 's'}
                 </Text>
               </View>
             )}
           </>
-        ) : isUpcoming ? (
+        ) : isUpcoming && !isLocked ? (
           <Text style={styles.noPrediction}>Toca para poner tu predicción →</Text>
+        ) : isUpcoming && isLocked ? (
+          <Text style={styles.lockedLabel}>🔒 Cerrado (menos de 1h) · Sin predicción</Text>
         ) : (
           <Text style={[styles.noPrediction, { color: Colors.accent }]}>Sin predicción</Text>
         )}
@@ -134,9 +156,11 @@ const styles = StyleSheet.create({
   },
   predLabel: { fontSize: 13, color: Colors.textSecondary },
   noPrediction: { fontSize: 13, color: Colors.primary, fontStyle: 'italic' },
+  lockedLabel: { fontSize: 12, color: Colors.textSecondary, fontStyle: 'italic' },
   pointsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   pointsExact: { backgroundColor: '#e8f8ee' },
   pointsCorrect: { backgroundColor: '#fef9e7' },
+  pointsPartial: { backgroundColor: '#fff3cd' },
   pointsWrong: { backgroundColor: '#f5f5f5' },
   pointsText: { fontSize: 12, fontWeight: '700', color: Colors.text },
 });
