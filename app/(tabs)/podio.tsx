@@ -8,12 +8,9 @@ import { useLeague } from '@/lib/league';
 import { getPodiumPrediction, savePodiumPrediction, getMemberPodiumPrediction, saveMemberPodiumPrediction, getTournamentResults, getAllTeams } from '@/lib/api';
 import { PodiumPrediction, TournamentResult } from '@/lib/types';
 import { Colors } from '@/constants/Colors';
+import { isPredictionsLocked } from '@/lib/constants';
 
-const DEADLINE = new Date('2026-06-10T23:59:59-06:00');
-
-function isLocked() {
-  return new Date() > DEADLINE;
-}
+function isLocked() { return isPredictionsLocked(); }
 
 interface TeamPickerProps {
   visible: boolean;

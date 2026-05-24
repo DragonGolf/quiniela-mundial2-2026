@@ -13,6 +13,7 @@ import {
 import { exportLeagueToExcel } from '@/lib/export';
 import { Colors } from '@/constants/Colors';
 import { LeagueEntry, LeagueMember } from '@/lib/types';
+import { PARTICIPATION_DEADLINE_STR, ADMIN_FEE_PERCENT, LOCK_DATE_STR } from '@/lib/constants';
 
 const APP_URL = 'https://quiniela-dragon-2026.vercel.app';
 
@@ -211,6 +212,34 @@ export default function LigasScreen() {
         <Text style={styles.trophy}>🏆</Text>
         <Text style={styles.title}>Quiniela Mundial 2026</Text>
         <Text style={styles.subtitle}>Selecciona tu quiniela</Text>
+      </View>
+
+      {/* Avisos importantes */}
+      <View style={styles.noticeCard}>
+        <View style={styles.noticeRow}>
+          <Text style={styles.noticeIcon}>📅</Text>
+          <Text style={styles.noticeText}>
+            <Text style={styles.noticeBold}>Confirma tu participación</Text> con el administrador antes del{' '}
+            <Text style={styles.noticeBold}>{PARTICIPATION_DEADLINE_STR}</Text>
+          </Text>
+        </View>
+        <View style={styles.noticeDivider} />
+        <View style={styles.noticeRow}>
+          <Text style={styles.noticeIcon}>💰</Text>
+          <Text style={styles.noticeText}>
+            Se descuenta{' '}
+            <Text style={styles.noticeBold}>{ADMIN_FEE_PERCENT}% del pozo</Text>
+            {' '}por gestión y cobros de la quiniela
+          </Text>
+        </View>
+        <View style={styles.noticeDivider} />
+        <View style={styles.noticeRow}>
+          <Text style={styles.noticeIcon}>🔒</Text>
+          <Text style={styles.noticeText}>
+            Predicciones se cierran:{' '}
+            <Text style={styles.noticeBold}>{LOCK_DATE_STR}</Text>
+          </Text>
+        </View>
       </View>
 
       {loading ? (
@@ -633,6 +662,16 @@ const styles = StyleSheet.create({
   paidToggleOff: { backgroundColor: 'rgba(244,67,54,0.7)' },
   paidToggleText: { fontSize: 12, fontWeight: '700', color: Colors.white },
   // Join section
+  // Notice card
+  noticeCard: {
+    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: 14,
+    marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+  },
+  noticeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 },
+  noticeIcon: { fontSize: 16 },
+  noticeText: { flex: 1, fontSize: 12, color: 'rgba(255,255,255,0.8)', lineHeight: 18 },
+  noticeBold: { fontWeight: '700', color: Colors.white },
+  noticeDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 4 },
   emptyBox: { alignItems: 'center', marginVertical: 32 },
   emptyText: { fontSize: 15, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginBottom: 4 },
   joinBox: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 16, padding: 20, marginTop: 8 },

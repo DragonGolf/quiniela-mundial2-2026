@@ -18,12 +18,13 @@ function AuthGuard() {
     const inLigas = segments[0] === 'ligas';
     const inCrearLiga = segments[0] === 'crear-liga';
     const inUnirse = segments[0] === 'unirse';
+    const inBienvenida = segments[0] === 'bienvenida';
 
     if (!session && !inAuth) {
       router.replace('/(auth)/');
     } else if (session && inAuth) {
       router.replace('/ligas');
-    } else if (session && !inAuth && !inLigas && !inCrearLiga && !inUnirse && !activeLeague) {
+    } else if (session && !inAuth && !inLigas && !inCrearLiga && !inUnirse && !inBienvenida && !activeLeague) {
       router.replace('/ligas');
     }
   }, [session, loading, segments, activeLeague]);

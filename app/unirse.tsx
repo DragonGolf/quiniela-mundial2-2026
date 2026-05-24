@@ -48,7 +48,9 @@ export default function UnirseScreen() {
       const myLeague = leagues.find(l => l.id === league.id);
       if (myLeague) setActiveLeague(myLeague);
       setMsg(`✅ Te uniste a ${league.name}`);
-      setTimeout(() => router.replace('/(tabs)'), 1200);
+      const memberId = myLeague?.member_id ?? '';
+      const leagueName = encodeURIComponent(league.name);
+      setTimeout(() => router.replace(`/bienvenida?memberId=${memberId}&leagueName=${leagueName}` as any), 1200);
     } catch (e: any) {
       setMsg('❌ ' + (e?.message || 'Código inválido'));
       setTimeout(() => router.replace('/ligas'), 2000);

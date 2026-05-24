@@ -12,6 +12,7 @@ import PredictionModal from '@/components/PredictionModal';
 import LivePredictionsModal from '@/components/LivePredictionsModal';
 import EmptyState from '@/components/EmptyState';
 import { Colors } from '@/constants/Colors';
+import { isPredictionsLocked, LOCK_DATE_STR } from '@/lib/constants';
 
 function groupByDate(matches: MatchWithPrediction[]) {
   const groups: Record<string, MatchWithPrediction[]> = {};
@@ -63,9 +64,10 @@ export default function MatchesScreen() {
   }
 
   function isMatchLocked(match: MatchWithPrediction): boolean {
+    if (isPredictionsLocked()) return true; // lock global: 1h antes del Mundial
     if (match.status !== 'upcoming') return true;
     const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
-    return minsUntil < 60; // lock 1 hour before
+    return minsUntil < 60;
   }
 
   function handlePress(match: MatchWithPrediction) {
@@ -94,8 +96,22 @@ export default function MatchesScreen() {
     );
   }
 
+  const locked = isPredictionsLocked();
+
   return (
     <View style={styles.container}>
+      {locked && (
+        <View style={styles.lockBanner}>
+          <Text style={styles.lockBannerText}>🔒 Predicciones cerradas — el Mundial ya comenzó</Text>
+        </View>
+      )}
+      {!locked && (
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningBannerText}>
+            ⏰ Cierre: {LOCK_DATE_STR}
+          </Text>
+        </View>
+      )}
       <SectionList
         sections={sections}
         keyExtractor={item => String(item.id)}
@@ -142,4 +158,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.5,
     paddingVertical: 8, paddingHorizontal: 4,
   },
+  lockBanner: {
+    backgroundColor: '#b71c1c', paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center',
+  },
+  lockBannerText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  warningBanner: {
+    backgroundColor: '#fff3e0', paddingVertical: 7, paddingHorizontal: 16,
+    alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#ffe0b2',
+  },
+  warningBannerText: { color: '#e65100', fontSize: 12, fontWeight: '600' },
 });

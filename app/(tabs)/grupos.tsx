@@ -9,9 +9,9 @@ import { getGroupTeams, getGroupPredictions, saveGroupPrediction, getGroupResult
 import { GroupPrediction, GroupResult } from '@/lib/types';
 import { Colors } from '@/constants/Colors';
 import FlagImage from '@/components/FlagImage';
+import { isPredictionsLocked } from '@/lib/constants';
 
-const DEADLINE = new Date('2026-06-10T23:59:59-06:00');
-function isLocked() { return new Date() > DEADLINE; }
+function isLocked() { return isPredictionsLocked(); }
 
 interface GroupEntry { team: string; flag: string; }
 type GroupState = { first: string; second: string };
@@ -194,7 +194,7 @@ export default function GruposScreen() {
         <Text style={styles.headerText}>
           {savedCount}/{groupNames.length} grupos guardados · 4 pts c/equipo clasificado
         </Text>
-        {locked && <Text style={styles.lockedText}>🔒 Cerrado (10 Jun)</Text>}
+        {locked && <Text style={styles.lockedText}>🔒 Cerrado — el Mundial comenzó</Text>}
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
