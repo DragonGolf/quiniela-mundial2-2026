@@ -28,22 +28,22 @@ export default function UnirseScreen() {
 
   async function handleJoin() {
     try {
-      setMsg(`Uniéndote a la liga con código ${codigo}...`);
-      let league;
-      try {
-        league = await joinLeague(codigo!, profile!.name);
-      } catch {
-        // Si ya eres miembro, busca la liga directamente
-        const leagues = await getMyLeagues(profile!.id);
-        const existing = leagues.find(l => l.code === codigo!.toUpperCase());
-        if (existing) {
-          setActiveLeague(existing);
-          setMsg(`✅ Entrando a ${existing.name}`);
-          setTimeout(() => router.replace('/(tabs)'), 1000);
-          return;
-        }
-        throw new Error('Código inválido');
+      setMsg(`Buscando liga con código ${codigo}...`);
+
+      // Primero verificar si ya somos miembro para no crear duplicados
+      const allLeagues = await getMyLeagues(profile!.id);
+      const alreadyMember = allLeagues.find(l => l.code === codigo!.toUpperCase());
+      if (alreadyMember) {
+        setActiveLeague(alreadyMember);
+        setMsg(`✅ Ya eres miembro de ${alreadyMember.name}`);
+        const leagueName = encodeURIComponent(alreadyMember.name);
+        setTimeout(() => router.replace(`/bienvenida?memberId=${alreadyMember.member_id}&leagueName=${leagueName}` as any), 1000);
+        return;
       }
+
+      // No somos miembro: unirse
+      setMsg(`Uniéndote a la liga con código ${codigo}...`);
+      const league = await joinLeague(codigo!, profile!.name);
       const leagues = await getMyLeagues(profile!.id);
       const myLeague = leagues.find(l => l.id === league.id);
       if (myLeague) setActiveLeague(myLeague);

@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { getLeagueMatchesForMember, getMatches } from '@/lib/api';
 import { Colors } from '@/constants/Colors';
 import { Prediction, MatchWithPrediction } from '@/lib/types';
+import { isPredictionsLocked } from '@/lib/constants';
 
 interface Stats {
   total: number;
@@ -26,6 +27,7 @@ interface PredProgress {
 }
 
 function isLocked(m: MatchWithPrediction) {
+  if (isPredictionsLocked()) return true;
   if (m.status !== 'upcoming') return true;
   return (new Date(m.match_date).getTime() - Date.now()) / 60000 < 60;
 }
@@ -347,9 +349,9 @@ export default function ProfileScreen() {
           </View>
         ))}
         <Text style={styles.rulesNote}>
-          💵 Solo efectivo · Pago límite: 10 de Junio{'\n'}
-          🔒 Predicciones de grupos y podio se cierran el 10 de Junio{'\n'}
-          ⏱ Predicciones de partidos se bloquean 1h antes de cada juego{'\n'}
+          💵 Solo efectivo · Confirmación de pago: 10 de junio{'\n'}
+          🔒 Todas las predicciones se cierran 1 hora antes del primer partido (11 jun){'\n'}
+          💰 Se descuenta 10% del pozo por gestión y cobros{'\n'}
           En caso de empate en puntos los premios se dividen entre los empatados.
         </Text>
       </View>
