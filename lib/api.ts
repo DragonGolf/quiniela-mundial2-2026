@@ -435,10 +435,10 @@ export async function setLeagueMemberPaid(leagueId: string, userId: string, paid
 }
 
 export async function setLeagueMemberPaidById(memberId: string, paid: boolean): Promise<void> {
-  const { error } = await supabase
-    .from('league_members')
-    .update({ is_paid: paid })
-    .eq('id', memberId);
+  const { error } = await supabase.rpc('admin_set_member_paid', {
+    p_member_id: memberId,
+    p_paid: paid,
+  });
   if (error) throw error;
 }
 
