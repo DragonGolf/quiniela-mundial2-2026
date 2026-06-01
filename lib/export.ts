@@ -1,6 +1,99 @@
 import * as XLSX from 'xlsx';
 import { supabase } from './supabase';
 
+export async function exportPaymentList() {
+  // Fetch all members with league and profile info
+  const [{ data: members }, { data: emailData }] = await Promise.all([
+    supabase
+      .from('league_members')
+      .select('id, alias, is_paid, is_admin, joined_at, user_id, profile:profiles(name), league:leagues(name, code)')
+      .order('user_id'),
+    supabase.rpc('admin_get_user_emails'),
+  ]);
+
+  if (!members) return;
+
+  const emailMap: Record<string, string> = {};
+  for (const row of emailData ?? []) emailMap[row.id] = row.email ?? '';
+
+  const generated = new Date().toLocaleString('es-MX');
+  const wb = XLSX.utils.book_new();
+
+  // ── Hoja 1: Lista de Pagos ──
+  const paidCount = members.filter(m => m.is_paid).length;
+
+  const rows = members.map((m, i) => [
+    i + 1,
+    (m.profile as any)?.name ?? '',
+    emailMap[m.user_id] ?? '',
+    (m.league as any)?.name ?? '',
+    (m.league as any)?.code ?? '',
+    m.alias ?? '',
+    m.is_paid ? 'Sí' : 'No',
+    m.is_admin ? 'Sí' : '',
+    new Date(m.joined_at).toLocaleDateString('es-MX'),
+    '', // Monto pagado (llenar manualmente)
+    '', // Fecha de pago (llenar manualmente)
+    '', // Notas
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Lista de Pagos — Quiniela Mundial 2026'],
+    [`Generado: ${generated}`],
+    [`Total participantes: ${members.length}   |   Pagados: ${paidCount}   |   Pendientes: ${members.length - paidCount}`],
+    [],
+    ['#', 'Nombre', 'Correo', 'Liga', 'Código', 'Alias quiniela', 'Pagado', 'Admin', 'Fecha ingreso', 'Monto pagado', 'Fecha pago', 'Notas'],
+    ...rows,
+  ]);
+
+  // Estilo de encabezado (ancho de columnas)
+  ws['!cols'] = [
+    { wch: 4 },  // #
+    { wch: 22 }, // Nombre
+    { wch: 28 }, // Correo
+    { wch: 18 }, // Liga
+    { wch: 10 }, // Código
+    { wch: 18 }, // Alias
+    { wch: 8 },  // Pagado
+    { wch: 6 },  // Admin
+    { wch: 14 }, // Fecha ingreso
+    { wch: 14 }, // Monto pagado
+    { wch: 14 }, // Fecha pago
+    { wch: 20 }, // Notas
+  ];
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
+  XLSX.utils.book_append_sheet(wb, ws, 'Lista de Pagos');
+
+  // ── Hoja 2: Resumen por Liga ──
+  const ligaMap: Record<string, { nombre: string; total: number; pagados: number }> = {};
+  for (const m of members) {
+    const key = (m.league as any)?.name ?? 'Sin liga';
+    if (!ligaMap[key]) ligaMap[key] = { nombre: key, total: 0, pagados: 0 };
+    ligaMap[key].total++;
+    if (m.is_paid) ligaMap[key].pagados++;
+  }
+
+  const ws2 = XLSX.utils.aoa_to_sheet([
+    ['Resumen por Liga'],
+    [],
+    ['Liga', 'Total participantes', 'Pagados', 'Pendientes', '% Pago'],
+    ...Object.values(ligaMap).map(l => [
+      l.nombre,
+      l.total,
+      l.pagados,
+      l.total - l.pagados,
+      `${Math.round((l.pagados / l.total) * 100)}%`,
+    ]),
+    [],
+    ['TOTAL', members.length, paidCount, members.length - paidCount, `${Math.round((paidCount / members.length) * 100)}%`],
+  ]);
+  ws2['!cols'] = [{ wch: 22 }, { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 8 }];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Resumen Ligas');
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `pagos-quiniela-${dateStr}.xlsx`);
+}
+
 function stageLabel(stage: string) {
   const map: Record<string, string> = {
     group: 'Grupo', round_of_32: 'R32', round_of_16: 'R16',

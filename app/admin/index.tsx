@@ -6,6 +6,7 @@ import {
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { triggerMatchSync, adminUpdateMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById } from '@/lib/api';
+import { exportPaymentList } from '@/lib/export';
 import { GroupResult, LeagueMember } from '@/lib/types';
 import { TournamentResult, Match } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
@@ -59,6 +60,7 @@ export default function AdminScreen() {
   const [emailMap, setEmailMap] = useState<Record<string, string>>({});
   // userId expandido para ver detalle
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [exportingPayments, setExportingPayments] = useState(false);
 
   useEffect(() => {
     if (profile && !profile.is_admin) {
@@ -244,6 +246,20 @@ export default function AdminScreen() {
           <Text style={styles.paidCounter}>{paidCount}/{totalEntries} pagados</Text>
         </View>
         <Text style={styles.trHint}>Todos los jugadores registrados · Toca para aprobar/quitar pago por quiniela</Text>
+        <TouchableOpacity
+          style={styles.exportPayBtn}
+          onPress={async () => {
+            setExportingPayments(true);
+            try { await exportPaymentList(); } catch (e: any) { console.error(e); }
+            finally { setExportingPayments(false); }
+          }}
+          disabled={exportingPayments}
+        >
+          {exportingPayments
+            ? <ActivityIndicator size="small" color={Colors.white} />
+            : <Text style={styles.exportPayBtnText}>📥 Descargar lista de pagos (.xlsx)</Text>
+          }
+        </TouchableOpacity>
         {paidMsg ? (
           <Text style={[styles.paidMsg, { color: paidMsg.startsWith('✅') ? '#2e7d32' : Colors.accent }]}>{paidMsg}</Text>
         ) : null}
@@ -540,6 +556,11 @@ const styles = StyleSheet.create({
   adminTag: { fontSize: 10, color: Colors.gold, fontWeight: '700', backgroundColor: '#fff3cd', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   paidToggle: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background, minWidth: 80, alignItems: 'center' },
   paidToggleOn: { backgroundColor: Colors.green, borderColor: Colors.green },
+  exportPayBtn: {
+    backgroundColor: '#1565c0', borderRadius: 10, paddingVertical: 10,
+    alignItems: 'center', marginBottom: 12, marginTop: 4,
+  },
+  exportPayBtnText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
   paidToggleText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
   paidToggleTextOn: { color: Colors.white },
   groupResultRow: { marginBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border, paddingBottom: 12 },
