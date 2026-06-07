@@ -11,6 +11,7 @@ import { getLeagueMatchesForMember, getMatches } from '@/lib/api';
 import { Colors } from '@/constants/Colors';
 import { Prediction, MatchWithPrediction } from '@/lib/types';
 import { isPredictionsLocked } from '@/lib/constants';
+import InstallAppButton from '@/components/InstallAppButton';
 
 interface Stats {
   total: number;
@@ -367,6 +368,9 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Instalar app */}
+      <InstallAppButton />
 
       {/* Admin button */}
       {(profile?.is_admin || activeLeague?.is_admin) && (

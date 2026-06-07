@@ -27,7 +27,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "name": "Quiniela Mundial 2026",
+      "shortName": "Quiniela 2026",
+      "description": "Llena tu quiniela del Mundial 2026",
+      "backgroundColor": "#1a3a5c",
+      "themeColor": "#1a3a5c",
+      "display": "standalone",
+      "startUrl": "/"
     },
     "plugins": [
       "expo-router",
