@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { triggerMatchSync, adminUpdateMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById } from '@/lib/api';
+import { triggerMatchSync, adminUpdateMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry } from '@/lib/api';
 import { exportPaymentList } from '@/lib/export';
 import { GroupResult, LeagueMember } from '@/lib/types';
 import { TournamentResult, Match } from '@/lib/types';
@@ -61,6 +61,8 @@ export default function AdminScreen() {
   // userId expandido para ver detalle
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [exportingPayments, setExportingPayments] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null); // entry.id
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile && !profile.is_admin) {
@@ -197,6 +199,24 @@ export default function AdminScreen() {
     }
   }
 
+  async function handleAdminDelete(memberId: string) {
+    setDeletingEntryId(memberId);
+    try {
+      await deleteLeagueEntry(memberId);
+      setUsersWithEntries(prev => prev
+        .map(u => ({ ...u, entries: u.entries.filter(e => e.id !== memberId) }))
+        .filter(u => u.entries.length > 0)
+      );
+      setConfirmDeleteId(null);
+      setPaidMsg('✅ Quiniela eliminada');
+      setTimeout(() => setPaidMsg(''), 2500);
+    } catch (e: any) {
+      setPaidMsg('❌ Error al eliminar: ' + (e?.message || ''));
+    } finally {
+      setDeletingEntryId(null);
+    }
+  }
+
   async function handleSaveGroupResults() {
     setSavingGroups(true);
     setGroupMsg('');
@@ -322,18 +342,49 @@ export default function AdminScreen() {
                           </Text>
                         </View>
                       </View>
-                      <TouchableOpacity
-                        style={[styles.paidToggle, entry.is_paid && styles.paidToggleOn]}
-                        onPress={() => handleToggleEntryPaid(entry.id, entry.is_paid)}
-                        disabled={togglingId === entry.id}
-                      >
-                        {togglingId === entry.id
-                          ? <ActivityIndicator size="small" color={Colors.white} />
-                          : <Text style={[styles.paidToggleText, entry.is_paid && styles.paidToggleTextOn]}>
-                              {entry.is_paid ? '✓ Pagó' : 'Sin pago'}
-                            </Text>
-                        }
-                      </TouchableOpacity>
+                      <View style={styles.entryActions}>
+                        <TouchableOpacity
+                          style={[styles.paidToggle, entry.is_paid && styles.paidToggleOn]}
+                          onPress={() => handleToggleEntryPaid(entry.id, entry.is_paid)}
+                          disabled={togglingId === entry.id}
+                        >
+                          {togglingId === entry.id
+                            ? <ActivityIndicator size="small" color={Colors.white} />
+                            : <Text style={[styles.paidToggleText, entry.is_paid && styles.paidToggleTextOn]}>
+                                {entry.is_paid ? '✓ Pagó' : 'Sin pago'}
+                              </Text>
+                          }
+                        </TouchableOpacity>
+                        {/* Botón eliminar */}
+                        {confirmDeleteId === entry.id ? (
+                          <View style={styles.deleteConfirmRow}>
+                            <Text style={styles.deleteConfirmText}>¿Eliminar?</Text>
+                            <TouchableOpacity
+                              style={styles.deleteConfirmYes}
+                              onPress={() => handleAdminDelete(entry.id)}
+                              disabled={deletingEntryId === entry.id}
+                            >
+                              {deletingEntryId === entry.id
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={styles.deleteConfirmYesText}>Sí</Text>
+                              }
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.deleteConfirmNo}
+                              onPress={() => setConfirmDeleteId(null)}
+                            >
+                              <Text style={styles.deleteConfirmNoText}>No</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.deleteBtn}
+                            onPress={() => setConfirmDeleteId(entry.id)}
+                          >
+                            <Text style={styles.deleteBtnText}>🗑</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   );
                 })}
@@ -562,6 +613,24 @@ const styles = StyleSheet.create({
   entryRealName: { fontSize: 14, fontWeight: '700', color: Colors.text },
   entryExpandHint: { fontSize: 11, color: Colors.textSecondary },
   entryEmail: { fontSize: 12, color: Colors.primary, marginBottom: 3, fontStyle: 'italic' },
+  entryActions: { alignItems: 'flex-end', gap: 6 },
+  deleteBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: '#ffebee', alignItems: 'center', justifyContent: 'center',
+  },
+  deleteBtnText: { fontSize: 16 },
+  deleteConfirmRow: { alignItems: 'center', gap: 4 },
+  deleteConfirmText: { fontSize: 11, color: '#c62828', fontWeight: '700' },
+  deleteConfirmYes: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6,
+    backgroundColor: '#c62828', minWidth: 36, alignItems: 'center',
+  },
+  deleteConfirmYesText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  deleteConfirmNo: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6,
+    backgroundColor: '#e0e0e0', minWidth: 36, alignItems: 'center',
+  },
+  deleteConfirmNoText: { color: Colors.text, fontSize: 12, fontWeight: '600' },
   exportPayBtn: {
     backgroundColor: '#1565c0', borderRadius: 10, paddingVertical: 10,
     alignItems: 'center', marginBottom: 12, marginTop: 4,
