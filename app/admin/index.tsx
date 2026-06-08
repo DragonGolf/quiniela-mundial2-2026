@@ -76,7 +76,7 @@ export default function AdminScreen() {
       getGroupResults(),
       supabase
         .from('league_members')
-        .select('*, profile:profiles(name), league:leagues(name, code)')
+        .select('*, profile:profiles(name), league:leagues(id, name, code)')
         .order('user_id'),
     ]);
 
@@ -265,68 +265,54 @@ export default function AdminScreen() {
         ) : null}
         {usersWithEntries.length === 0 ? (
           <Text style={styles.trHint}>No hay jugadores registrados aún.</Text>
-        ) : (
-          usersWithEntries.map(user => {
-            const leagueNames = [...new Set(user.entries.map(e => (e.league as any)?.name ?? 'Liga'))];
-            const isExpanded = expandedUser === user.userId;
-            const email = emailMap[user.userId] ?? '';
-            return (
-              <View key={user.userId} style={styles.userBlock}>
-                {/* Cabecera de usuario — toca para ver detalle */}
-                <TouchableOpacity
-                  style={styles.userHeader}
-                  onPress={() => setExpandedUser(isExpanded ? null : user.userId)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.userAvatar}>
-                    <Text style={styles.userAvatarText}>{user.realName[0]?.toUpperCase()}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.userName}>{user.realName}</Text>
-                    <Text style={styles.userLeaguesSub}>{leagueNames.join(' · ')}</Text>
-                  </View>
-                  <Text style={styles.entryCount}>
-                    {user.entries.length} quiniela{user.entries.length > 1 ? 's' : ''}
-                  </Text>
-                  <Text style={styles.expandChevron}>{isExpanded ? ' ▲' : ' ▼'}</Text>
-                </TouchableOpacity>
+        ) : (() => {
+          // Agrupar por liga — un usuario puede aparecer en múltiples ligas
+          const ligaMap = new Map<string, { leagueId: string; leagueName: string; leagueCode: string; rows: Array<{ entry: EntryWithLeague; realName: string }> }>();
+          for (const user of usersWithEntries) {
+            for (const entry of user.entries) {
+              const lid = (entry.league as any)?.id ?? entry.league_id ?? 'unknown';
+              const lname = (entry.league as any)?.name ?? 'Sin liga';
+              const lcode = (entry.league as any)?.code ?? '';
+              if (!ligaMap.has(lid)) ligaMap.set(lid, { leagueId: lid, leagueName: lname, leagueCode: lcode, rows: [] });
+              ligaMap.get(lid)!.rows.push({ entry, realName: user.realName });
+            }
+          }
+          const ligaGroups = Array.from(ligaMap.values()).sort((a, b) => a.leagueName.localeCompare(b.leagueName));
 
-                {/* Detalle expandido */}
-                {isExpanded && (
-                  <View style={styles.userDetail}>
-                    <View style={styles.userDetailRow}>
-                      <Text style={styles.userDetailLabel}>Nombre</Text>
-                      <Text style={styles.userDetailValue}>{user.realName}</Text>
-                    </View>
-                    <View style={styles.userDetailRow}>
-                      <Text style={styles.userDetailLabel}>Correo</Text>
-                      <Text style={styles.userDetailValue} selectable>{email || '—'}</Text>
-                    </View>
-                    <View style={styles.userDetailRow}>
-                      <Text style={styles.userDetailLabel}>Quinielas</Text>
-                      <Text style={styles.userDetailValue}>{user.entries.length}</Text>
-                    </View>
-                    <View style={[styles.userDetailRow, { borderBottomWidth: 0 }]}>
-                      <Text style={styles.userDetailLabel}>Pagadas</Text>
-                      <Text style={[styles.userDetailValue, { color: Colors.green, fontWeight: '700' }]}>
-                        {user.entries.filter(e => e.is_paid).length}/{user.entries.length}
-                      </Text>
-                    </View>
+          return ligaGroups.map(liga => {
+            const ligaPaid = liga.rows.filter(r => r.entry.is_paid).length;
+            return (
+              <View key={liga.leagueId} style={styles.ligaSection}>
+                {/* Encabezado de liga */}
+                <View style={styles.ligaSectionHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.ligaSectionName}>{liga.leagueName}</Text>
+                    <Text style={styles.ligaSectionCode}>Código: {liga.leagueCode}</Text>
                   </View>
-                )}
-                {/* Quinielas */}
-                {user.entries.map(entry => {
+                  <View style={styles.ligaPaidBadge}>
+                    <Text style={styles.ligaPaidBadgeText}>{ligaPaid}/{liga.rows.length} pagados</Text>
+                  </View>
+                </View>
+
+                {/* Filas de jugadores en esta liga */}
+                {liga.rows.map(({ entry, realName }) => {
                   const ps = predStats[entry.id] ?? { matchPreds: 0, hasGroups: false, hasPodio: false };
                   const hasAny = ps.matchPreds > 0 || ps.hasGroups || ps.hasPodio;
                   const allDone = ps.matchPreds === totalMatches && ps.hasGroups && ps.hasPodio;
+                  const email = emailMap[entry.user_id] ?? '';
+                  const isExpanded = expandedUser === entry.id;
                   return (
                     <View key={entry.id} style={styles.entryRow}>
                       <View style={styles.entryInfo}>
-                        <Text style={styles.entryAlias}>🎯 {entry.alias || 'Sin nombre'}</Text>
-                        <Text style={styles.entryLeagueName}>
-                          {(entry.league as any)?.name ?? ''}{entry.is_admin ? ' · Admin' : ''}
-                        </Text>
-                        {/* Prediction progress */}
+                        {/* Nombre + tap para ver email */}
+                        <TouchableOpacity onPress={() => setExpandedUser(isExpanded ? null : entry.id)} style={styles.entryNameRow}>
+                          <Text style={styles.entryRealName}>{realName}</Text>
+                          <Text style={styles.entryExpandHint}>{isExpanded ? ' ▲' : ' ▼'}</Text>
+                        </TouchableOpacity>
+                        {isExpanded && (
+                          <Text style={styles.entryEmail} selectable>{email || '—'}</Text>
+                        )}
+                        <Text style={styles.entryAlias}>🎯 {entry.alias || 'Sin nombre'}{entry.is_admin ? ' · Admin' : ''}</Text>
                         <View style={styles.predRow}>
                           <View style={[styles.predDot, allDone ? styles.predDotGreen : hasAny ? styles.predDotYellow : styles.predDotRed]} />
                           <Text style={styles.predText}>
@@ -353,8 +339,8 @@ export default function AdminScreen() {
                 })}
               </View>
             );
-          })
-        )}
+          });
+        })()}
       </View>
 
       {/* Tournament results */}
@@ -556,6 +542,26 @@ const styles = StyleSheet.create({
   adminTag: { fontSize: 10, color: Colors.gold, fontWeight: '700', backgroundColor: '#fff3cd', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   paidToggle: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background, minWidth: 80, alignItems: 'center' },
   paidToggleOn: { backgroundColor: Colors.green, borderColor: Colors.green },
+  // Liga sections in payment panel
+  ligaSection: {
+    backgroundColor: '#f8f9fa', borderRadius: 12, marginBottom: 14,
+    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
+  },
+  ligaSectionHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  ligaSectionName: { fontSize: 15, fontWeight: '800', color: Colors.white },
+  ligaSectionCode: { fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 1 },
+  ligaPaidBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  ligaPaidBadgeText: { fontSize: 12, fontWeight: '700', color: Colors.white },
+  entryNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
+  entryRealName: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  entryExpandHint: { fontSize: 11, color: Colors.textSecondary },
+  entryEmail: { fontSize: 12, color: Colors.primary, marginBottom: 3, fontStyle: 'italic' },
   exportPayBtn: {
     backgroundColor: '#1565c0', borderRadius: 10, paddingVertical: 10,
     alignItems: 'center', marginBottom: 12, marginTop: 4,
