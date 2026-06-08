@@ -159,15 +159,22 @@ export default function TabsLayout() {
         <Text style={st.reglasBtnText}>📋</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        onPress={() => router.push('/ligas')}
-        style={{ alignItems: 'flex-end' }}
+        onPress={() => router.navigate('/ligas')}
+        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+        style={st.switchBtn}
+        activeOpacity={0.7}
       >
-        <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '600', letterSpacing: 0.3 }}>
-          {activeLeague?.name ?? 'Sin liga'} ▾
-        </Text>
-        <Text style={{ fontSize: 13, color: Colors.white, fontWeight: '700', maxWidth: 130 }} numberOfLines={1}>
-          🎯 {activeLeague?.alias ?? 'Elegir quiniela'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)', fontWeight: '600', letterSpacing: 0.3 }}>
+              {activeLeague?.name ?? 'Sin liga'}
+            </Text>
+            <Text style={{ fontSize: 13, color: Colors.white, fontWeight: '700', maxWidth: 120 }} numberOfLines={1}>
+              🎯 {activeLeague?.alias ?? 'Elegir'}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 18, color: Colors.gold, fontWeight: '700', lineHeight: 20 }}>▾</Text>
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -254,6 +261,12 @@ const st = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   reglasBtnText: { fontSize: 16 },
+  switchBtn: {
+    paddingHorizontal: 8, paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
   // Modal
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',

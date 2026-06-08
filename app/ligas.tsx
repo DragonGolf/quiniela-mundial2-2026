@@ -104,7 +104,7 @@ export default function LigasScreen() {
 
   function handleSelect(entry: LeagueEntry) {
     setActiveLeague(entry);
-    router.replace('/(tabs)');
+    router.navigate('/(tabs)');
   }
 
   async function copyLink(entry: LeagueEntry) {
