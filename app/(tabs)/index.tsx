@@ -112,6 +112,15 @@ export default function MatchesScreen() {
           </Text>
         </View>
       )}
+      {activeLeague?.is_paid ? (
+        <View style={styles.paidBanner}>
+          <Text style={styles.paidBannerText}>✅ Pago confirmado</Text>
+        </View>
+      ) : (
+        <View style={styles.unpaidBanner}>
+          <Text style={styles.unpaidBannerText}>⚠️ Pago pendiente — confirma con el administrador</Text>
+        </View>
+      )}
       <SectionList
         sections={sections}
         keyExtractor={item => String(item.id)}
@@ -167,4 +176,14 @@ const styles = StyleSheet.create({
     alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#ffe0b2',
   },
   warningBannerText: { color: '#e65100', fontSize: 12, fontWeight: '600' },
+  paidBanner: {
+    backgroundColor: '#e8f5e9', paddingVertical: 7, paddingHorizontal: 16,
+    alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#c8e6c9',
+  },
+  paidBannerText: { color: '#2e7d32', fontSize: 12, fontWeight: '700' },
+  unpaidBanner: {
+    backgroundColor: '#fff8e1', paddingVertical: 7, paddingHorizontal: 16,
+    alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#ffecb3',
+  },
+  unpaidBannerText: { color: '#f57f17', fontSize: 12, fontWeight: '600' },
 });
