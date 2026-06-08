@@ -74,15 +74,12 @@ export default function AdminScreen() {
   }, [profile]);
 
   async function load() {
-    const [{ data: matchData }, tr, teams, groupRes, { data: allMembers }] = await Promise.all([
+    const [{ data: matchData }, tr, teams, groupRes, { data: allMembersRaw }] = await Promise.all([
       supabase.from('matches').select('*').order('match_date', { ascending: true }),
       getTournamentResults(),
       getGroupTeams(),
       getGroupResults(),
-      supabase
-        .from('league_members')
-        .select('*, profile:profiles(name), league:leagues(id, name, code)')
-        .order('user_id'),
+      supabase.rpc('admin_get_all_members'),
     ]);
 
     setMatches(matchData || []);
@@ -99,7 +96,20 @@ export default function AdminScreen() {
     for (const r of groupRes) resMap[r.group_name] = { first: r.first_place || '', second: r.second_place || '' };
     setGroupResults(resMap);
 
-    if (allMembers && allMembers.length > 0) {
+    // Normaliza los datos del RPC al formato que espera el resto del código
+    const allMembers = ((allMembersRaw as any[]) ?? []).map((m: any) => ({
+      id: m.id,
+      league_id: m.league_id,
+      user_id: m.user_id,
+      alias: m.alias,
+      is_paid: m.is_paid,
+      is_admin: m.is_admin,
+      joined_at: m.joined_at,
+      profile: { name: m.profile_name ?? 'Jugador' },
+      league: { id: m.league_id, name: m.league_name ?? '', code: m.league_code ?? '' },
+    }));
+
+    if (allMembers.length > 0) {
       // Agrupa miembros por usuario
       const userMap = new Map<string, UserWithEntries>();
       for (const m of allMembers as EntryWithLeague[]) {
