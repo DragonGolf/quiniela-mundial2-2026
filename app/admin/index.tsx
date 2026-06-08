@@ -74,12 +74,11 @@ export default function AdminScreen() {
   }, [profile]);
 
   async function load() {
-    const [{ data: matchData }, tr, teams, groupRes, { data: allMembersRaw }] = await Promise.all([
+    const [{ data: matchData }, tr, teams, groupRes] = await Promise.all([
       supabase.from('matches').select('*').order('match_date', { ascending: true }),
       getTournamentResults(),
       getGroupTeams(),
       getGroupResults(),
-      supabase.rpc('admin_get_all_members'),
     ]);
 
     setMatches(matchData || []);
@@ -96,6 +95,12 @@ export default function AdminScreen() {
     for (const r of groupRes) resMap[r.group_name] = { first: r.first_place || '', second: r.second_place || '' };
     setGroupResults(resMap);
 
+    // Cargar miembros vía RPC (SECURITY DEFINER, bypassa RLS)
+    const { data: allMembersRaw, error: membersError } = await supabase.rpc('admin_get_all_members');
+    if (membersError) {
+      console.error('admin_get_all_members error:', membersError);
+    }
+
     // Normaliza los datos del RPC al formato que espera el resto del código
     const allMembers = ((allMembersRaw as any[]) ?? []).map((m: any) => ({
       id: m.id,
@@ -109,18 +114,20 @@ export default function AdminScreen() {
       league: { id: m.league_id, name: m.league_name ?? '', code: m.league_code ?? '' },
     }));
 
-    if (allMembers.length > 0) {
-      // Agrupa miembros por usuario
-      const userMap = new Map<string, UserWithEntries>();
-      for (const m of allMembers as EntryWithLeague[]) {
-        const uid = m.user_id;
-        if (!userMap.has(uid)) {
-          userMap.set(uid, { userId: uid, realName: (m.profile as any)?.name ?? 'Jugador', entries: [] });
-        }
-        userMap.get(uid)!.entries.push(m);
-      }
-      setUsersWithEntries(Array.from(userMap.values()).sort((a, b) => a.realName.localeCompare(b.realName)));
+    console.log('admin_get_all_members returned', allMembers.length, 'rows, error:', membersError?.message);
 
+    // Agrupa miembros por usuario (siempre, aunque esté vacío)
+    const userMap = new Map<string, UserWithEntries>();
+    for (const m of allMembers as EntryWithLeague[]) {
+      const uid = m.user_id;
+      if (!userMap.has(uid)) {
+        userMap.set(uid, { userId: uid, realName: (m.profile as any)?.name ?? 'Jugador', entries: [] });
+      }
+      userMap.get(uid)!.entries.push(m);
+    }
+    setUsersWithEntries(Array.from(userMap.values()).sort((a, b) => a.realName.localeCompare(b.realName)));
+
+    if (allMembers.length > 0) {
       // Fetch emails via admin RPC
       const { data: emailData } = await supabase.rpc('admin_get_user_emails');
       if (emailData) {
