@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { triggerMatchSync, adminUpdateMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry } from '@/lib/api';
+import { triggerMatchSync, adminUpdateMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues } from '@/lib/api';
 import { exportPaymentList } from '@/lib/export';
 import { GroupResult, LeagueMember } from '@/lib/types';
 import { TournamentResult, Match } from '@/lib/types';
@@ -61,8 +61,11 @@ export default function AdminScreen() {
   // userId expandido para ver detalle
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [exportingPayments, setExportingPayments] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null); // entry.id
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+  const [moveEntryId, setMoveEntryId] = useState<string | null>(null); // entry.id being moved
+  const [allLeagues, setAllLeagues] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [movingId, setMovingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile && !profile.is_admin) {
@@ -196,6 +199,31 @@ export default function AdminScreen() {
       setPaidMsg('❌ Error: ' + (e?.message || JSON.stringify(e)));
     } finally {
       setTogglingId(null);
+    }
+  }
+
+  async function openMoveModal(entryId: string) {
+    if (allLeagues.length === 0) {
+      const leagues = await getAllLeagues();
+      setAllLeagues(leagues);
+    }
+    setMoveEntryId(entryId);
+    setConfirmDeleteId(null);
+  }
+
+  async function handleMove(newLeagueId: string) {
+    if (!moveEntryId) return;
+    setMovingId(moveEntryId);
+    try {
+      await moveLeagueEntry(moveEntryId, newLeagueId);
+      setMoveEntryId(null);
+      setPaidMsg('✅ Quiniela movida');
+      setTimeout(() => setPaidMsg(''), 2500);
+      await load(); // recargar para reflejar el cambio
+    } catch (e: any) {
+      setPaidMsg('❌ Error: ' + (e?.message || ''));
+    } finally {
+      setMovingId(null);
     }
   }
 
@@ -355,6 +383,17 @@ export default function AdminScreen() {
                               </Text>
                           }
                         </TouchableOpacity>
+                        {/* Botón mover liga */}
+                        <TouchableOpacity
+                          style={styles.moveBtn}
+                          onPress={() => openMoveModal(entry.id)}
+                          disabled={movingId === entry.id}
+                        >
+                          {movingId === entry.id
+                            ? <ActivityIndicator size="small" color={Colors.primary} />
+                            : <Text style={styles.moveBtnText}>↗</Text>
+                          }
+                        </TouchableOpacity>
                         {/* Botón eliminar */}
                         {confirmDeleteId === entry.id ? (
                           <View style={styles.deleteConfirmRow}>
@@ -510,6 +549,47 @@ export default function AdminScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
 
+      {/* Move league modal */}
+      <Modal visible={!!moveEntryId} transparent animationType="slide" onRequestClose={() => setMoveEntryId(null)}>
+        <View style={styles.overlay}>
+          <View style={styles.editSheet}>
+            <Text style={styles.editTitle}>↗ Mover a otra liga</Text>
+            <Text style={[styles.trHint, { textAlign: 'center', marginBottom: 16 }]}>
+              Selecciona la liga de destino para esta quiniela
+            </Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {allLeagues
+                .filter(l => {
+                  // hide current league of this entry
+                  const entry = usersWithEntries.flatMap(u => u.entries).find(e => e.id === moveEntryId);
+                  return entry ? l.name !== entry.league.name : true;
+                })
+                .map(liga => (
+                  <TouchableOpacity
+                    key={liga.id}
+                    style={styles.leagueOptionRow}
+                    onPress={() => handleMove(liga.id)}
+                    disabled={!!movingId}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.leagueOptionName}>{liga.name}</Text>
+                      <Text style={styles.leagueOptionCode}>Código: {liga.code}</Text>
+                    </View>
+                    {movingId ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={{ fontSize: 18, color: Colors.primary }}>›</Text>}
+                  </TouchableOpacity>
+                ))
+              }
+              {allLeagues.length === 0 && (
+                <ActivityIndicator size="large" color={Colors.primary} style={{ marginVertical: 20 }} />
+              )}
+            </ScrollView>
+            <TouchableOpacity style={styles.editCancel} onPress={() => setMoveEntryId(null)}>
+              <Text style={styles.editCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Edit modal */}
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
         <View style={styles.overlay}>
@@ -614,6 +694,18 @@ const styles = StyleSheet.create({
   entryExpandHint: { fontSize: 11, color: Colors.textSecondary },
   entryEmail: { fontSize: 12, color: Colors.primary, marginBottom: 3, fontStyle: 'italic' },
   entryActions: { alignItems: 'flex-end', gap: 6 },
+  moveBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: '#e8f4fd', alignItems: 'center', justifyContent: 'center',
+  },
+  moveBtnText: { fontSize: 16, color: Colors.primary, fontWeight: '700' },
+  leagueOptionRow: {
+    flexDirection: 'row', alignItems: 'center', padding: 14,
+    borderRadius: 10, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.background, marginBottom: 8,
+  },
+  leagueOptionName: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  leagueOptionCode: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
   deleteBtn: {
     width: 32, height: 32, borderRadius: 8,
     backgroundColor: '#ffebee', alignItems: 'center', justifyContent: 'center',
