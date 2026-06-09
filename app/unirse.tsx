@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/lib/auth';
@@ -11,6 +11,8 @@ export default function UnirseScreen() {
   const { profile, session, loading } = useAuth();
   const { setActiveLeague } = useLeague();
   const [msg, setMsg] = useState('Procesando invitación...');
+  // Garantiza que el join solo se ejecute UNA vez (evita duplicados por re-render)
+  const joinStarted = useRef(false);
 
   useEffect(() => {
     if (loading) return; // Esperar a que auth cargue
@@ -23,7 +25,10 @@ export default function UnirseScreen() {
       router.replace(`/(auth)/?codigo=${codigo}` as any);
       return;
     }
-    if (profile) handleJoin();
+    if (profile && !joinStarted.current) {
+      joinStarted.current = true;
+      handleJoin();
+    }
   }, [profile, session, codigo, loading]);
 
   async function handleJoin() {
