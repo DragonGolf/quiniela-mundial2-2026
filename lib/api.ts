@@ -514,11 +514,8 @@ export async function renameLeagueEntry(memberId: string, alias: string): Promis
 }
 
 export async function deleteLeagueEntry(memberId: string): Promise<void> {
-  // Delete child predictions first (in case FK doesn't have CASCADE)
-  await supabase.from('league_predictions').delete().eq('league_member_id', memberId);
-  await supabase.from('member_group_predictions').delete().eq('league_member_id', memberId);
-  await supabase.from('member_podium_predictions').delete().eq('league_member_id', memberId);
-  const { error } = await supabase.from('league_members').delete().eq('id', memberId);
+  // Usa RPC SECURITY DEFINER para bypassear RLS (admin puede borrar entradas de otros)
+  const { error } = await supabase.rpc('admin_delete_member', { p_member_id: memberId });
   if (error) throw error;
 }
 
