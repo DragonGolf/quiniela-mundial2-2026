@@ -10,6 +10,7 @@ import { MatchWithPrediction, Prediction } from '@/lib/types';
 import MatchCard from '@/components/MatchCard';
 import PredictionModal from '@/components/PredictionModal';
 import LivePredictionsModal from '@/components/LivePredictionsModal';
+import InstallBanner from '@/components/InstallBanner';
 import EmptyState from '@/components/EmptyState';
 import { Colors } from '@/constants/Colors';
 import { isPredictionsLocked, LOCK_DATE_STR } from '@/lib/constants';
@@ -100,6 +101,7 @@ export default function MatchesScreen() {
 
   return (
     <View style={styles.container}>
+      <InstallBanner />
       {locked && (
         <View style={styles.lockBanner}>
           <Text style={styles.lockBannerText}>🔒 Predicciones cerradas — el Mundial ya comenzó</Text>
