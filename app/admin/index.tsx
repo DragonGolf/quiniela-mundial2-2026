@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { triggerMatchSync, adminUpdateMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues } from '@/lib/api';
+import { triggerMatchSync, adminUpdateMatch, adminClearMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues } from '@/lib/api';
 import { exportPaymentList } from '@/lib/export';
 import { GroupResult, LeagueMember } from '@/lib/types';
 import { TournamentResult, Match } from '@/lib/types';
@@ -281,6 +281,19 @@ export default function AdminScreen() {
     setMatchMsg('Guardando...');
     try {
       await adminUpdateMatch(editing.id, h, a, newStatus);
+      setMatchMsg('');
+      setEditing(null);
+      await load();
+    } catch (e: any) {
+      setMatchMsg('❌ Error: ' + (e?.message || JSON.stringify(e)));
+    }
+  }
+
+  async function handleClearMatch() {
+    if (!editing) return;
+    setMatchMsg('Quitando marcador...');
+    try {
+      await adminClearMatch(editing.id);
       setMatchMsg('');
       setEditing(null);
       await load();
@@ -677,6 +690,12 @@ export default function AdminScreen() {
             </View>
 
             {matchMsg ? <Text style={{ textAlign: 'center', marginBottom: 10, fontWeight: '600', color: matchMsg.startsWith('❌') ? 'red' : Colors.textSecondary }}>{matchMsg}</Text> : null}
+
+            {/* Quitar marcador / reiniciar a próximo */}
+            <TouchableOpacity style={styles.clearScoreBtn} onPress={handleClearMatch}>
+              <Text style={styles.clearScoreBtnText}>🗑 Quitar marcador (dejar como próximo)</Text>
+            </TouchableOpacity>
+
             <View style={styles.editButtons}>
               <TouchableOpacity style={styles.editCancel} onPress={() => { setEditing(null); setMatchMsg(''); }}>
                 <Text style={styles.editCancelText}>Cancelar</Text>
@@ -707,6 +726,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginTop: 8,
   },
   trSaveBtnText: { fontSize: 15, fontWeight: '700', color: Colors.white },
+  clearScoreBtn: {
+    height: 42, borderRadius: 10, borderWidth: 1.5, borderColor: '#d32f2f',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+  },
+  clearScoreBtnText: { fontSize: 13, fontWeight: '700', color: '#d32f2f' },
   userRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
   userInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   userName: { fontSize: 15, color: Colors.text, fontWeight: '500' },

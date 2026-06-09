@@ -297,8 +297,8 @@ export async function getAllTeams(): Promise<string[]> {
 
 export async function adminUpdateMatch(
   matchId: number,
-  homeScore: number,
-  awayScore: number,
+  homeScore: number | null,
+  awayScore: number | null,
   status: 'upcoming' | 'live' | 'finished'
 ) {
   const { error } = await supabase
@@ -306,6 +306,15 @@ export async function adminUpdateMatch(
     .update({ home_score: homeScore, away_score: awayScore, status })
     .eq('id', matchId);
 
+  if (error) throw error;
+}
+
+// Quita el marcador y deja el partido como "próximo" (para pruebas o correcciones)
+export async function adminClearMatch(matchId: number) {
+  const { error } = await supabase
+    .from('matches')
+    .update({ home_score: null, away_score: null, status: 'upcoming' })
+    .eq('id', matchId);
   if (error) throw error;
 }
 
