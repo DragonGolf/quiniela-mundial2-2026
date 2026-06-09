@@ -1,21 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
-  FlatList, ActivityIndicator, Platform,
+  ScrollView, ActivityIndicator, Platform,
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { useLeague } from '@/lib/league';
 import { Colors } from '@/constants/Colors';
 import { MatchWithPrediction } from '@/lib/types';
+import { getMatchPredictionsGrouped, MatchPredLeague } from '@/lib/api';
 import FlagImage from './FlagImage';
-
-interface PredRow {
-  member_id: string;
-  name: string;
-  pred_home: number;
-  pred_away: number;
-  points: number;
-}
 
 interface Props {
   match: MatchWithPrediction | null;
@@ -24,19 +16,18 @@ interface Props {
 }
 
 function calcLivePoints(ph: number, pa: number, ah: number, aa: number): number {
-  const res = (h: number, a: number) => h > a ? 'H' : h < a ? 'A' : 'D';
+  const res = (h: number, a: number) => (h > a ? 'H' : h < a ? 'A' : 'D');
   let pts = 0;
   if (res(ph, pa) === res(ah, aa)) pts += 3;
   if (ph === ah && pa === aa) pts += 2;
   if (ph === ah || pa === aa) pts += 1;
-  if ((ph - pa) === (ah - aa)) pts += 1;
+  if (ph - pa === ah - aa) pts += 1;
   return pts;
 }
 
 export default function LivePredictionsModal({ match, visible, onClose }: Props) {
-  const { activeLeague } = useLeague();
-  const [rows, setRows] = useState<PredRow[]>([]);
-  const [currentScore, setCurrentScore] = useState<{ home: number; away: number } | null>(null);
+  const [leagues, setLeagues] = useState<MatchPredLeague[]>([]);
+  const [score, setScore] = useState<{ home: number; away: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
@@ -44,64 +35,33 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
     if (!match) return;
     setLoading(true);
     try {
-      // Fetch fresh match score
+      // Marcador fresco
       const { data: freshMatch } = await supabase
         .from('matches')
         .select('home_score, away_score')
         .eq('id', match.id)
         .single();
-
       const homeScore = freshMatch?.home_score ?? match.home_score ?? 0;
       const awayScore = freshMatch?.away_score ?? match.away_score ?? 0;
-      setCurrentScore({ home: homeScore, away: awayScore });
+      setScore({ home: homeScore, away: awayScore });
 
-      // Fetch league members (id → alias map) for the active league
-      if (activeLeague) {
-        const { data: members } = await supabase
-          .from('league_members')
-          .select('id, alias')
-          .eq('league_id', activeLeague.id);
-
-        const memberMap = new Map<string, string>(
-          (members || []).map((m: any) => [m.id, m.alias ?? 'Jugador'])
-        );
-        const memberIds = Array.from(memberMap.keys());
-
-        if (memberIds.length > 0) {
-          const { data: preds } = await supabase
-            .from('league_predictions')
-            .select('league_member_id, pred_home, pred_away')
-            .eq('match_id', match.id)
-            .in('league_member_id', memberIds);
-
-          if (preds) {
-            const computed: PredRow[] = preds.map((p: any) => ({
-              member_id: p.league_member_id,
-              name: memberMap.get(p.league_member_id) ?? 'Jugador',
-              pred_home: p.pred_home,
-              pred_away: p.pred_away,
-              points: calcLivePoints(p.pred_home, p.pred_away, homeScore, awayScore),
-            }));
-            computed.sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
-            setRows(computed);
-          }
-        } else {
-          setRows([]);
-        }
-      } else {
-        setRows([]);
-      }
+      // Predicciones agrupadas por mis ligas
+      const grouped = await getMatchPredictionsGrouped(match.id);
+      setLeagues(grouped);
       setLastRefresh(new Date());
+    } catch (e) {
+      console.error('Error cargando predicciones del partido:', e);
+      setLeagues([]);
     } finally {
       setLoading(false);
     }
-  }, [match, activeLeague]);
+  }, [match]);
 
   useEffect(() => {
     if (visible && match) load();
   }, [visible, match]);
 
-  // Auto-refresh every 60s when live
+  // Auto-refresh cada 60s cuando está en vivo
   useEffect(() => {
     if (!visible || match?.status !== 'live') return;
     const interval = setInterval(load, 60000);
@@ -111,120 +71,181 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
   if (!match) return null;
 
   const isLive = match.status === 'live';
+  const isFinished = match.status === 'finished';
+  const hasScore = score !== null;
 
-  function pointsColor(pts: number) {
-    if (pts >= 7) return '#2e7d32';
-    if (pts >= 5) return '#558b2f';
-    if (pts >= 3) return '#f57f17';
-    if (pts > 0) return '#bf360c';
-    return Colors.textSecondary;
+  // Mi predicción y mis puntos (primera fila is_mine que se encuentre)
+  let myRow: { ph: number; pa: number } | null = null;
+  for (const lg of leagues) {
+    const mine = lg.rows.find((r) => r.is_mine);
+    if (mine) { myRow = { ph: mine.pred_home, pa: mine.pred_away }; break; }
   }
+  const myPoints =
+    myRow && hasScore ? calcLivePoints(myRow.ph, myRow.pa, score!.home, score!.away) : null;
 
-  function pointsBg(pts: number) {
-    if (pts >= 7) return '#e8f5e9';
-    if (pts >= 5) return '#f1f8e9';
-    if (pts >= 3) return '#fffde7';
-    if (pts > 0) return '#fbe9e7';
-    return '#f5f5f5';
+  function ptsBg(p: number) {
+    if (p >= 7) return '#d6f5e0';
+    if (p >= 4) return '#fdeccd';
+    if (p > 0) return '#e9edf2';
+    return '#fde2e6';
   }
-
-  function predResult(ph: number, pa: number) {
-    if (ph > pa) return '🏠';
-    if (ph < pa) return '✈️';
-    return '🤝';
+  function ptsColor(p: number) {
+    if (p >= 7) return '#13864a';
+    if (p >= 4) return '#9a6a08';
+    if (p > 0) return '#4a5568';
+    return '#b3243a';
   }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeText}>✕</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Predicciones del partido</Text>
-          {isLive ? (
-            <TouchableOpacity onPress={load} style={styles.refreshBtn}>
-              <Text style={styles.refreshText}>↻</Text>
-            </TouchableOpacity>
-          ) : <View style={styles.closeBtn} />}
-        </View>
-
-        {/* Match info */}
-        <View style={styles.matchBox}>
-          <View style={[styles.statusBadge, isLive && styles.statusBadgeLive]}>
-            <Text style={[styles.statusText, isLive && styles.statusTextLive]}>
-              {isLive ? '● EN VIVO' : 'FINALIZADO'}
+        {/* Scoreboard */}
+        <View style={styles.scorebar}>
+          <View style={styles.topRow}>
+            <Text style={styles.stage} numberOfLines={1}>
+              {match.group_name ? `Grupo ${match.group_name}` : 'Mundial 2026'}
             </Text>
+            <View style={styles.headerRight}>
+              {isLive ? (
+                <View style={styles.livePill}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.livePillText}>EN VIVO</Text>
+                </View>
+              ) : (
+                <View style={[styles.livePill, isFinished ? styles.finPill : styles.upPill]}>
+                  <Text style={styles.livePillText}>{isFinished ? 'FINALIZADO' : 'PRÓXIMO'}</Text>
+                </View>
+              )}
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.scoreRow}>
-            <View style={styles.teamBlock}>
-              <FlagImage flag={match.home_flag} size={36} />
-              <Text style={styles.teamName} numberOfLines={2}>{match.home_team}</Text>
+            <View style={styles.team}>
+              <FlagImage flag={match.home_flag} size={42} />
+              <Text style={styles.teamName} numberOfLines={1}>{match.home_team}</Text>
             </View>
-
-            <View style={styles.scoreBlock}>
-              {currentScore ? (
-                <Text style={styles.score}>{currentScore.home} - {currentScore.away}</Text>
+            <View style={styles.scoreMid}>
+              {hasScore && (isLive || isFinished) ? (
+                <Text style={styles.scoreNums}>{score!.home} <Text style={styles.scoreDash}>-</Text> {score!.away}</Text>
               ) : (
-                <Text style={styles.score}>- - -</Text>
+                <Text style={styles.scoreNums}>vs</Text>
               )}
-              <Text style={styles.scoreLabel}>Marcador actual</Text>
+              <Text style={styles.scoreLabel}>
+                {isLive ? 'Marcador en vivo' : isFinished ? 'Resultado final' : 'Aún no inicia'}
+              </Text>
             </View>
-
-            <View style={styles.teamBlock}>
-              <FlagImage flag={match.away_flag} size={36} />
-              <Text style={styles.teamName} numberOfLines={2}>{match.away_team}</Text>
+            <View style={styles.team}>
+              <FlagImage flag={match.away_flag} size={42} />
+              <Text style={styles.teamName} numberOfLines={1}>{match.away_team}</Text>
             </View>
           </View>
-
-          {lastRefresh && isLive && (
-            <Text style={styles.refreshTime}>
-              Actualizado: {lastRefresh.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </Text>
-          )}
         </View>
 
-        {/* Legend */}
-        <View style={styles.legend}>
-          <Text style={styles.legendText}>Puntos con el marcador actual</Text>
-        </View>
-
-        {/* Predictions list */}
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-          </View>
-        ) : rows.length === 0 ? (
-          <View style={styles.centered}>
-            <Text style={styles.emptyText}>Nadie tiene predicción para este partido</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={rows}
-            keyExtractor={item => item.member_id}
-            contentContainerStyle={styles.list}
-            renderItem={({ item, index }) => (
-              <View style={[styles.row, { backgroundColor: pointsBg(item.points) }]}>
-                <Text style={styles.rank}>#{index + 1}</Text>
-
-                <View style={styles.nameBlock}>
-                  <Text style={styles.playerName}>{item.name}</Text>
-                  <Text style={styles.predText}>
-                    {predResult(item.pred_home, item.pred_away)}{' '}
-                    {item.pred_home} - {item.pred_away}
-                  </Text>
-                </View>
-
-                <View style={[styles.ptsBadge, { backgroundColor: 'rgba(0,0,0,0.06)' }]}>
-                  <Text style={[styles.ptsText, { color: pointsColor(item.points) }]}>
-                    {item.points >= 7 ? '🎯 ' : item.points >= 3 ? '✓ ' : ''}{item.points} pts
+        {/* Mi predicción */}
+        {myRow && (
+          <View style={styles.myBand}>
+            <View>
+              <Text style={styles.myLbl}>Tu predicción</Text>
+              <Text style={styles.myPred}>
+                {match.home_team} {myRow.ph} - {myRow.pa} {match.away_team}
+              </Text>
+            </View>
+            {myPoints !== null && (isLive || isFinished) && (
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.myLbl}>{isFinished ? 'Ganaste' : 'Si acaba así'}</Text>
+                <View style={[styles.myPtsBadge, { backgroundColor: myPoints > 0 ? Colors.gold : 'rgba(255,255,255,0.18)' }]}>
+                  <Text style={[styles.myPtsText, { color: myPoints > 0 ? '#1a1a2e' : '#fff' }]}>
+                    {myPoints} pts {myPoints >= 7 ? '✓' : ''}
                   </Text>
                 </View>
               </View>
             )}
-          />
+          </View>
+        )}
+
+        {/* Lista por liga */}
+        {loading ? (
+          <View style={styles.centered}><ActivityIndicator size="large" color={Colors.primary} /></View>
+        ) : leagues.length === 0 ? (
+          <View style={styles.centered}>
+            <Text style={styles.emptyText}>Aún no hay predicciones para este partido en tus ligas</Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.body}>
+            <Text style={styles.secTitle}>📋 Predicciones de este partido</Text>
+            <Text style={styles.hint}>
+              {isLive
+                ? `Puntos con el marcador actual ${score!.home}-${score!.away}. Se actualiza solo cada minuto.`
+                : isFinished
+                ? 'Puntos finales de este partido.'
+                : 'Predicciones registradas. Los puntos aparecerán cuando inicie el partido.'}
+            </Text>
+
+            {leagues.map((lg) => {
+              // calcular puntos y ordenar
+              const rows = lg.rows
+                .map((r) => ({
+                  ...r,
+                  pts: hasScore && (isLive || isFinished)
+                    ? calcLivePoints(r.pred_home, r.pred_away, score!.home, score!.away)
+                    : null,
+                }))
+                .sort((a, b) => {
+                  if (a.pts === null || b.pts === null) return a.alias.localeCompare(b.alias);
+                  return b.pts - a.pts || a.alias.localeCompare(b.alias);
+                });
+              const topPts = rows.length && rows[0].pts !== null ? rows[0].pts : null;
+
+              return (
+                <View key={lg.league_id} style={styles.league}>
+                  <View style={styles.lhead}>
+                    <Text style={styles.lname} numberOfLines={1}>{lg.league_name}</Text>
+                    <Text style={styles.lcount}>{rows.length} quiniela{rows.length === 1 ? '' : 's'}</Text>
+                  </View>
+
+                  {/* encabezados */}
+                  <View style={styles.thRow}>
+                    <Text style={[styles.th, { flex: 1 }]}>Quiniela</Text>
+                    <Text style={[styles.th, styles.thC, { width: 64 }]}>Predijo</Text>
+                    <Text style={[styles.th, styles.thC, { width: 56 }]}>Puntos</Text>
+                  </View>
+
+                  {rows.map((r, i) => {
+                    const isLeader = r.pts !== null && topPts !== null && r.pts === topPts && r.pts > 0;
+                    return (
+                      <View key={r.member_id} style={[styles.tr, r.is_mine && styles.trMine]}>
+                        <Text style={[styles.qname, r.is_mine && styles.qnameMine]} numberOfLines={1}>
+                          {r.alias}{isLeader ? ' 👑' : ''}{r.is_mine ? ' (tú)' : ''}
+                        </Text>
+                        <Text style={[styles.qpred, styles.thC, { width: 64 }]}>
+                          {r.pred_home} - {r.pred_away}
+                        </Text>
+                        <View style={{ width: 56, alignItems: 'center' }}>
+                          {r.pts === null ? (
+                            <Text style={styles.ptsPending}>—</Text>
+                          ) : (
+                            <View style={[styles.ptsPill, { backgroundColor: ptsBg(r.pts) }]}>
+                              <Text style={[styles.ptsPillText, { color: ptsColor(r.pts) }]}>{r.pts}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
+
+            {lastRefresh && isLive && (
+              <Text style={styles.refreshTime}>
+                Actualizado: {lastRefresh.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </Text>
+            )}
+            <View style={{ height: 20 }} />
+          </ScrollView>
         )}
       </View>
     </Modal>
@@ -233,51 +254,48 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 16 : 12, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-    backgroundColor: Colors.white,
-  },
-  closeBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  closeText: { fontSize: 18, color: Colors.textSecondary, fontWeight: '600' },
-  refreshBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  refreshText: { fontSize: 22, color: Colors.primary, fontWeight: '700' },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
-  matchBox: {
-    backgroundColor: Colors.white, padding: 20,
-    alignItems: 'center', borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  statusBadge: {
-    paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20,
-    backgroundColor: '#f0f0f0', marginBottom: 16,
-  },
-  statusBadgeLive: { backgroundColor: '#ffe5e5' },
-  statusText: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1 },
-  statusTextLive: { color: '#d32f2f' },
-  scoreRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
-  teamBlock: { flex: 1, alignItems: 'center', gap: 6 },
-  teamName: { fontSize: 12, fontWeight: '600', color: Colors.text, textAlign: 'center' },
-  scoreBlock: { flex: 1, alignItems: 'center' },
-  score: { fontSize: 32, fontWeight: '800', color: Colors.text },
-  scoreLabel: { fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
-  refreshTime: { fontSize: 11, color: Colors.textSecondary, marginTop: 12 },
-  legend: {
-    paddingHorizontal: 16, paddingVertical: 10,
-    backgroundColor: '#f8f9fa', borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  legendText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { fontSize: 15, color: Colors.textSecondary },
-  list: { padding: 12, paddingBottom: 32 },
-  row: {
-    flexDirection: 'row', alignItems: 'center', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8, gap: 12,
-  },
-  rank: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary, width: 28 },
-  nameBlock: { flex: 1 },
-  playerName: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  predText: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
-  ptsBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, minWidth: 70, alignItems: 'center' },
-  ptsText: { fontSize: 13, fontWeight: '800' },
+  scorebar: { backgroundColor: Colors.primary, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 14 : 14, paddingBottom: 16 },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  stage: { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.accent, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
+  upPill: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  finPill: { backgroundColor: Colors.finished },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#fff' },
+  livePillText: { fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  closeBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.15)' },
+  closeText: { fontSize: 15, color: '#fff', fontWeight: '700' },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  team: { flex: 1, alignItems: 'center', gap: 6 },
+  teamName: { fontSize: 13, fontWeight: '700', color: '#fff', textAlign: 'center' },
+  scoreMid: { flex: 1, alignItems: 'center' },
+  scoreNums: { fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: 1 },
+  scoreDash: { color: 'rgba(255,255,255,0.5)' },
+  scoreLabel: { fontSize: 11, color: Colors.gold, fontWeight: '700', marginTop: 2 },
+  myBand: { backgroundColor: '#16314e', paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  myLbl: { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  myPred: { fontSize: 14, color: '#fff', fontWeight: '800', marginTop: 2 },
+  myPtsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginTop: 3 },
+  myPtsText: { fontSize: 13, fontWeight: '800' },
+  body: { padding: 14, paddingBottom: 24 },
+  secTitle: { fontSize: 12, fontWeight: '800', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginHorizontal: 4, marginBottom: 6 },
+  hint: { fontSize: 11, color: Colors.textSecondary, marginHorizontal: 4, marginBottom: 12, lineHeight: 16 },
+  league: { backgroundColor: Colors.card, borderRadius: 14, marginBottom: 14, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border },
+  lhead: { backgroundColor: Colors.primary, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 13, paddingVertical: 9 },
+  lname: { fontSize: 14, fontWeight: '800', color: '#fff', flex: 1 },
+  lcount: { fontSize: 11, fontWeight: '700', color: '#fff', backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  thRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6 },
+  th: { fontSize: 10, color: Colors.textSecondary, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  thC: { textAlign: 'center' },
+  tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  trMine: { backgroundColor: '#fff8e8' },
+  qname: { flex: 1, fontSize: 13, fontWeight: '700', color: Colors.text },
+  qnameMine: { color: '#9a6a08' },
+  qpred: { fontSize: 13, fontWeight: '800', color: Colors.primary },
+  ptsPill: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 7, minWidth: 30, alignItems: 'center' },
+  ptsPillText: { fontSize: 13, fontWeight: '800' },
+  ptsPending: { fontSize: 14, color: Colors.textSecondary, fontWeight: '700' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  emptyText: { fontSize: 15, color: Colors.textSecondary, textAlign: 'center' },
+  refreshTime: { fontSize: 11, color: Colors.textSecondary, textAlign: 'center', marginTop: 4 },
 });

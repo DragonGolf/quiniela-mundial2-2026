@@ -459,6 +459,35 @@ export async function getAllLeagues(): Promise<{ id: string; name: string; code:
   return data || [];
 }
 
+// Predicciones de un partido agrupadas por las ligas del usuario (vía RPC SECURITY DEFINER)
+export interface MatchPredRow {
+  member_id: string;
+  alias: string;
+  is_mine: boolean;
+  pred_home: number;
+  pred_away: number;
+}
+export interface MatchPredLeague {
+  league_id: string;
+  league_name: string;
+  rows: MatchPredRow[];
+}
+export async function getMatchPredictionsGrouped(matchId: number): Promise<MatchPredLeague[]> {
+  const { data, error } = await supabase.rpc('get_match_predictions', { p_match_id: matchId });
+  if (error) throw error;
+  const map = new Map<string, MatchPredLeague>();
+  for (const r of (data as any[]) || []) {
+    if (!map.has(r.league_id)) {
+      map.set(r.league_id, { league_id: r.league_id, league_name: r.league_name, rows: [] });
+    }
+    map.get(r.league_id)!.rows.push({
+      member_id: r.member_id, alias: r.alias, is_mine: r.is_mine,
+      pred_home: r.pred_home, pred_away: r.pred_away,
+    });
+  }
+  return Array.from(map.values()).sort((a, b) => a.league_name.localeCompare(b.league_name));
+}
+
 // ── Per-member group predictions ──────────────────────────────────
 export async function getMemberGroupPredictions(memberId: string): Promise<GroupPrediction[]> {
   const { data } = await supabase
