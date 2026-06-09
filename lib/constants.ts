@@ -3,9 +3,10 @@
 // ============================================================
 
 // Las predicciones se bloquean 1 hora antes del primer partido del Mundial.
-// Primer partido estimado: 11 de junio de 2026, ~7 PM CDT (México).
-// Actualiza esta fecha cuando se confirme el horario oficial.
-export const PREDICTIONS_LOCK_DATE = new Date('2026-06-12T00:00:00Z'); // medianoche UTC = 7 PM CDT 11-jun
+// Primer partido (según la API): 11 de junio de 2026, 19:00 UTC = 1:00 PM México (UTC-6).
+// Cierre = 1 hora antes = 18:00 UTC = 12:00 PM (mediodía) México.
+// Actualiza esta fecha si la FIFA confirma otro horario.
+export const PREDICTIONS_LOCK_DATE = new Date('2026-06-11T18:00:00Z'); // 12:00 PM México, 11-jun
 
 // Fecha límite para confirmar participación con el administrador
 export const PARTICIPATION_DEADLINE_STR = '10 de junio de 2026';
@@ -14,7 +15,7 @@ export const PARTICIPATION_DEADLINE_STR = '10 de junio de 2026';
 export const ADMIN_FEE_PERCENT = 10;
 
 // Fecha formateada del cierre de predicciones
-export const LOCK_DATE_STR = '11 de junio de 2026, 1 hora antes del primer partido';
+export const LOCK_DATE_STR = '11 de junio de 2026, 12:00 PM (México) — 1h antes del primer partido';
 
 /** Devuelve true si ya no se pueden modificar predicciones */
 export function isPredictionsLocked(): boolean {
