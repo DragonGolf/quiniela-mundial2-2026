@@ -157,14 +157,17 @@ export default function GruposScreen() {
       setSaveMsg('⚠️ Selecciona 1ro y 2do de al menos un grupo');
       return;
     }
+    // Evita guardar en la tabla global: requiere quiniela activa
+    if (!activeLeague?.member_id) {
+      setSaveMsg('⚠️ Selecciona tu quiniela antes de guardar (toca el nombre de la quiniela arriba)');
+      return;
+    }
     setSaving(true);
     setSaveMsg('');
     try {
       await Promise.all(
         toSave.map(([groupName, { first, second }]) =>
-          activeLeague?.member_id
-            ? saveMemberGroupPrediction(activeLeague.member_id, groupName, first, second)
-            : saveGroupPrediction(profile.id, groupName, first, second)
+          saveMemberGroupPrediction(activeLeague.member_id, groupName, first, second)
         )
       );
       const newSaved: Record<string, GroupState> = { ...savedSelections };

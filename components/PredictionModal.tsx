@@ -36,15 +36,15 @@ export default function PredictionModal({ match, existing, visible, onClose, onS
       setError('Sesión expirada, recarga la página');
       return;
     }
+    // Evita guardar en la tabla global: requiere quiniela activa
+    if (!memberId) {
+      setError('Selecciona tu quiniela antes de guardar (toca el nombre de la quiniela arriba)');
+      return;
+    }
     setSaving(true);
     try {
-      let pred: Prediction;
-      if (memberId) {
-        const lp = await saveLeaguePredictionForMember(memberId, match.id, h, a);
-        pred = lp as unknown as Prediction;
-      } else {
-        pred = await savePrediction(profile.id, match.id, h, a);
-      }
+      const lp = await saveLeaguePredictionForMember(memberId, match.id, h, a);
+      const pred = lp as unknown as Prediction;
       onSaved(pred);
       onClose();
     } catch (e: any) {

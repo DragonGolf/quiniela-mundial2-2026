@@ -113,12 +113,15 @@ export default function PodioScreen() {
       return;
     }
     if (!profile) return;
+    // Evita guardar en la tabla global: si no hay quiniela activa, pedir seleccionarla
+    if (!activeLeague?.member_id) {
+      setSaveMsg('⚠️ Selecciona tu quiniela antes de guardar el podio (toca el nombre de la quiniela arriba)');
+      return;
+    }
     setSaving(true);
     setSaveMsg('');
     try {
-      const saved = await (activeLeague?.member_id
-        ? saveMemberPodiumPrediction(activeLeague.member_id, champion, runnerUp, thirdPlace, topScorer || undefined)
-        : savePodiumPrediction(profile.id, champion, runnerUp, thirdPlace, topScorer || undefined));
+      const saved = await saveMemberPodiumPrediction(activeLeague.member_id, champion, runnerUp, thirdPlace, topScorer || undefined);
       setPodium(saved);
       setSaveMsg('✅ Podio guardado correctamente');
       setTimeout(() => setSaveMsg(''), 3000);
