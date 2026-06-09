@@ -128,7 +128,9 @@ export default function MatchesScreen() {
           <MatchCard
             match={item}
             onPress={() => handlePress(item)}
-            onViewPredictions={() => setLiveSelected(item)}
+            // Botón "👁 Ver" solo para admin (puede revisar antes del cierre).
+            // Los usuarios normales ven las predicciones al tocar un partido ya cerrado.
+            onViewPredictions={profile?.is_admin ? () => setLiveSelected(item) : undefined}
           />
         )}
         renderSectionHeader={({ section }) => (
