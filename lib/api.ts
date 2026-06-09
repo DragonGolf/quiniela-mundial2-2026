@@ -459,6 +459,49 @@ export async function moveLeagueEntry(memberId: string, newLeagueId: string): Pr
   if (error) throw error;
 }
 
+// ── Registro de quinielas (transparencia: premios + predicciones) ──
+export interface RegistroMember {
+  member_id: string; alias: string; is_paid: boolean; is_admin: boolean;
+  match_count: number; has_groups: boolean; has_podio: boolean;
+}
+export async function getRegistroMembers(leagueId: string): Promise<RegistroMember[]> {
+  const { data, error } = await supabase.rpc('get_registro_members', { p_league_id: leagueId });
+  if (error) throw error;
+  return ((data as any[]) || []).map((r) => ({
+    member_id: r.member_id, alias: r.alias, is_paid: r.is_paid, is_admin: r.is_admin,
+    match_count: Number(r.match_count ?? 0), has_groups: r.has_groups, has_podio: r.has_podio,
+  }));
+}
+
+export interface RegistroPodium {
+  member_id: string; champion: string; runner_up: string; third_place: string; top_scorer: string | null;
+}
+export async function getRegistroPodium(leagueId: string): Promise<RegistroPodium[]> {
+  const { data, error } = await supabase.rpc('get_registro_podium', { p_league_id: leagueId });
+  if (error) throw error;
+  return (data as any[]) || [];
+}
+
+export interface RegistroGroup {
+  member_id: string; group_name: string; first_place: string; second_place: string;
+}
+export async function getRegistroGroups(leagueId: string): Promise<RegistroGroup[]> {
+  const { data, error } = await supabase.rpc('get_registro_groups', { p_league_id: leagueId });
+  if (error) throw error;
+  return (data as any[]) || [];
+}
+
+export interface RegistroMatchPred {
+  member_id: string; match_id: number; pred_home: number; pred_away: number;
+}
+export async function getRegistroMatches(leagueId: string): Promise<RegistroMatchPred[]> {
+  const { data, error } = await supabase.rpc('get_registro_matches', { p_league_id: leagueId });
+  if (error) throw error;
+  return ((data as any[]) || []).map((r) => ({
+    member_id: r.member_id, match_id: r.match_id, pred_home: r.pred_home, pred_away: r.pred_away,
+  }));
+}
+
 export async function getAllLeagues(): Promise<{ id: string; name: string; code: string }[]> {
   const { data, error } = await supabase
     .from('leagues')

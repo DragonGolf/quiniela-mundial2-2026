@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, RefreshControl,
-  ActivityIndicator, FlatList,
+  ActivityIndicator, FlatList, TouchableOpacity,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
 import { getLeagueRanking } from '@/lib/api';
@@ -45,18 +46,29 @@ export default function RankingScreen() {
     );
   }
 
+  const registroButton = (
+    <TouchableOpacity style={styles.registroBtn} onPress={() => router.push('/registro' as any)}>
+      <Text style={styles.registroBtnText}>📋 Registro de quinielas (premios y predicciones)</Text>
+      <Text style={styles.registroBtnArrow}>›</Text>
+    </TouchableOpacity>
+  );
+
   if (!ranking.length) {
     return (
-      <EmptyState
-        icon="🏅"
-        title="Ranking vacío"
-        subtitle="El ranking aparecerá cuando haya predicciones y resultados"
-      />
+      <View style={styles.container}>
+        {registroButton}
+        <EmptyState
+          icon="🏅"
+          title="Ranking vacío"
+          subtitle="El ranking aparecerá cuando haya predicciones y resultados"
+        />
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {registroButton}
       {myRank > 0 && (
         <View style={styles.myRankBanner}>
           <Text style={styles.myRankText}>Tu posición: #{myRank} de {ranking.length}</Text>
@@ -101,4 +113,11 @@ const styles = StyleSheet.create({
   },
   colHeader: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase' },
   list: { paddingHorizontal: 8, paddingBottom: 32 },
+  registroBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.gold, marginHorizontal: 12, marginTop: 10, marginBottom: 2,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+  },
+  registroBtnText: { flex: 1, fontSize: 13, fontWeight: '800', color: Colors.white },
+  registroBtnArrow: { fontSize: 20, fontWeight: '800', color: Colors.white },
 });
