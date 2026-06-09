@@ -1,94 +1,123 @@
 import * as XLSX from 'xlsx';
 import { supabase } from './supabase';
 
+// Nombre de pestaña válido para Excel (≤31 chars, sin caracteres prohibidos, único)
+function safeSheetName(name: string, used: Set<string>): string {
+  let s = (name || 'Liga').replace(/[\\/?*:[\]]/g, ' ').trim().slice(0, 28) || 'Liga';
+  let candidate = s;
+  let n = 2;
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${s.slice(0, 25)} ${n++}`;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+const PAY_HEADERS = ['#', 'Nombre', 'Correo', 'Liga', 'Código', 'Alias quiniela', 'Pagado', 'Admin', 'Fecha ingreso', 'Monto pagado', 'Fecha pago', 'Notas'];
+const PAY_COLS = [
+  { wch: 4 }, { wch: 22 }, { wch: 28 }, { wch: 18 }, { wch: 10 }, { wch: 18 },
+  { wch: 8 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 20 },
+];
+
+interface PayMember {
+  id: string; alias: string; is_paid: boolean; is_admin: boolean;
+  joined_at: string; user_id: string; league_id: string;
+  league_name: string; league_code: string; profile_name: string;
+}
+
+function buildPayRows(list: PayMember[], emailMap: Record<string, string>) {
+  return list.map((m, i) => [
+    i + 1,
+    m.profile_name ?? '',
+    emailMap[m.user_id] ?? '',
+    m.league_name ?? '',
+    m.league_code ?? '',
+    m.alias ?? '',
+    m.is_paid ? 'Sí' : 'No',
+    m.is_admin ? 'Sí' : '',
+    m.joined_at ? new Date(m.joined_at).toLocaleDateString('es-MX') : '',
+    '', '', '', // Monto pagado / Fecha pago / Notas (llenar manualmente)
+  ]);
+}
+
 export async function exportPaymentList() {
-  // Fetch all members with league and profile info
-  const [{ data: members }, { data: emailData }] = await Promise.all([
-    supabase
-      .from('league_members')
-      .select('id, alias, is_paid, is_admin, joined_at, user_id, profile:profiles(name), league:leagues(name, code)')
-      .order('user_id'),
+  // Usar RPC admin_get_all_members (bypassa RLS) en vez de select directo
+  const [{ data: rawMembers, error: memErr }, { data: emailData }] = await Promise.all([
+    supabase.rpc('admin_get_all_members'),
     supabase.rpc('admin_get_user_emails'),
   ]);
+  if (memErr) { console.error('admin_get_all_members error:', memErr); }
 
-  if (!members) return;
+  const members: PayMember[] = ((rawMembers as any[]) ?? []).map((m) => ({
+    id: m.id, alias: m.alias, is_paid: m.is_paid, is_admin: m.is_admin,
+    joined_at: m.joined_at, user_id: m.user_id, league_id: m.league_id,
+    league_name: m.league_name ?? 'Sin liga', league_code: m.league_code ?? '',
+    profile_name: m.profile_name ?? '',
+  }));
+  if (members.length === 0) return;
 
   const emailMap: Record<string, string> = {};
   for (const row of emailData ?? []) emailMap[row.id] = row.email ?? '';
 
   const generated = new Date().toLocaleString('es-MX');
   const wb = XLSX.utils.book_new();
-
-  // ── Hoja 1: Lista de Pagos ──
   const paidCount = members.filter(m => m.is_paid).length;
 
-  const rows = members.map((m, i) => [
-    i + 1,
-    (m.profile as any)?.name ?? '',
-    emailMap[m.user_id] ?? '',
-    (m.league as any)?.name ?? '',
-    (m.league as any)?.code ?? '',
-    m.alias ?? '',
-    m.is_paid ? 'Sí' : 'No',
-    m.is_admin ? 'Sí' : '',
-    new Date(m.joined_at).toLocaleDateString('es-MX'),
-    '', // Monto pagado (llenar manualmente)
-    '', // Fecha de pago (llenar manualmente)
-    '', // Notas
-  ]);
-
-  const ws = XLSX.utils.aoa_to_sheet([
-    ['Lista de Pagos — Quiniela Mundial 2026'],
+  // ── Hoja 1: GENERAL (todas las ligas) ──
+  const wsGen = XLSX.utils.aoa_to_sheet([
+    ['Lista de Pagos GENERAL — Quiniela Mundial 2026'],
     [`Generado: ${generated}`],
     [`Total participantes: ${members.length}   |   Pagados: ${paidCount}   |   Pendientes: ${members.length - paidCount}`],
     [],
-    ['#', 'Nombre', 'Correo', 'Liga', 'Código', 'Alias quiniela', 'Pagado', 'Admin', 'Fecha ingreso', 'Monto pagado', 'Fecha pago', 'Notas'],
-    ...rows,
+    PAY_HEADERS,
+    ...buildPayRows(members, emailMap),
   ]);
-
-  // Estilo de encabezado (ancho de columnas)
-  ws['!cols'] = [
-    { wch: 4 },  // #
-    { wch: 22 }, // Nombre
-    { wch: 28 }, // Correo
-    { wch: 18 }, // Liga
-    { wch: 10 }, // Código
-    { wch: 18 }, // Alias
-    { wch: 8 },  // Pagado
-    { wch: 6 },  // Admin
-    { wch: 14 }, // Fecha ingreso
-    { wch: 14 }, // Monto pagado
-    { wch: 14 }, // Fecha pago
-    { wch: 20 }, // Notas
-  ];
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
-  XLSX.utils.book_append_sheet(wb, ws, 'Lista de Pagos');
+  wsGen['!cols'] = PAY_COLS;
+  wsGen['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
+  XLSX.utils.book_append_sheet(wb, wsGen, 'General');
 
   // ── Hoja 2: Resumen por Liga ──
-  const ligaMap: Record<string, { nombre: string; total: number; pagados: number }> = {};
+  const ligaMap: Record<string, { nombre: string; codigo: string; total: number; pagados: number }> = {};
   for (const m of members) {
-    const key = (m.league as any)?.name ?? 'Sin liga';
-    if (!ligaMap[key]) ligaMap[key] = { nombre: key, total: 0, pagados: 0 };
+    const key = m.league_id;
+    if (!ligaMap[key]) ligaMap[key] = { nombre: m.league_name, codigo: m.league_code, total: 0, pagados: 0 };
     ligaMap[key].total++;
     if (m.is_paid) ligaMap[key].pagados++;
   }
+  const ligas = Object.entries(ligaMap)
+    .map(([id, l]) => ({ id, ...l }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   const ws2 = XLSX.utils.aoa_to_sheet([
     ['Resumen por Liga'],
     [],
-    ['Liga', 'Total participantes', 'Pagados', 'Pendientes', '% Pago'],
-    ...Object.values(ligaMap).map(l => [
-      l.nombre,
-      l.total,
-      l.pagados,
-      l.total - l.pagados,
+    ['Liga', 'Código', 'Total', 'Pagados', 'Pendientes', '% Pago'],
+    ...ligas.map(l => [
+      l.nombre, l.codigo, l.total, l.pagados, l.total - l.pagados,
       `${Math.round((l.pagados / l.total) * 100)}%`,
     ]),
     [],
-    ['TOTAL', members.length, paidCount, members.length - paidCount, `${Math.round((paidCount / members.length) * 100)}%`],
+    ['TOTAL', '', members.length, paidCount, members.length - paidCount, `${Math.round((paidCount / members.length) * 100)}%`],
   ]);
-  ws2['!cols'] = [{ wch: 22 }, { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 8 }];
+  ws2['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 8 }];
   XLSX.utils.book_append_sheet(wb, ws2, 'Resumen Ligas');
+
+  // ── Una hoja por liga ──
+  const usedNames = new Set<string>(['general', 'resumen ligas']);
+  for (const liga of ligas) {
+    const ligaMembers = members.filter(m => m.league_id === liga.id);
+    const ligaPaid = ligaMembers.filter(m => m.is_paid).length;
+    const ws = XLSX.utils.aoa_to_sheet([
+      [`Liga: ${liga.nombre}  (Código: ${liga.codigo})`],
+      [`Pagados: ${ligaPaid} / ${ligaMembers.length}   |   Pendientes: ${ligaMembers.length - ligaPaid}`],
+      [],
+      PAY_HEADERS,
+      ...buildPayRows(ligaMembers, emailMap),
+    ]);
+    ws['!cols'] = PAY_COLS;
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName(liga.nombre, usedNames));
+  }
 
   const dateStr = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `pagos-quiniela-${dateStr}.xlsx`);

@@ -4,6 +4,7 @@ import {
   ScrollView, ActivityIndicator, Platform,
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { useLeague } from '@/lib/league';
 import { Colors } from '@/constants/Colors';
 import { MatchWithPrediction } from '@/lib/types';
 import { getMatchPredictionsGrouped, MatchPredLeague } from '@/lib/api';
@@ -26,8 +27,10 @@ function calcLivePoints(ph: number, pa: number, ah: number, aa: number): number 
 }
 
 export default function LivePredictionsModal({ match, visible, onClose }: Props) {
+  const { activeLeague } = useLeague();
   const [leagues, setLeagues] = useState<MatchPredLeague[]>([]);
-  const [score, setScore] = useState<{ home: number; away: number } | null>(null);
+  // Marcador actual (default 0-0: "puntos posibles si queda así")
+  const [score, setScore] = useState<{ home: number; away: number }>({ home: 0, away: 0 });
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
@@ -35,7 +38,7 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
     if (!match) return;
     setLoading(true);
     try {
-      // Marcador fresco
+      // Marcador fresco (si no inició aún, se trata como 0-0)
       const { data: freshMatch } = await supabase
         .from('matches')
         .select('home_score, away_score')
@@ -45,9 +48,12 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
       const awayScore = freshMatch?.away_score ?? match.away_score ?? 0;
       setScore({ home: homeScore, away: awayScore });
 
-      // Predicciones agrupadas por mis ligas
+      // Predicciones agrupadas, pero SOLO la liga activa (las ligas no se ven entre sí)
       const grouped = await getMatchPredictionsGrouped(match.id);
-      setLeagues(grouped);
+      const onlyActive = activeLeague
+        ? grouped.filter((g) => g.league_id === activeLeague.id)
+        : grouped;
+      setLeagues(onlyActive);
       setLastRefresh(new Date());
     } catch (e) {
       console.error('Error cargando predicciones del partido:', e);
@@ -55,7 +61,7 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
     } finally {
       setLoading(false);
     }
-  }, [match]);
+  }, [match, activeLeague]);
 
   useEffect(() => {
     if (visible && match) load();
@@ -72,7 +78,6 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
 
   const isLive = match.status === 'live';
   const isFinished = match.status === 'finished';
-  const hasScore = score !== null;
 
   // Mi predicción y mis puntos (primera fila is_mine que se encuentre)
   let myRow: { ph: number; pa: number } | null = null;
@@ -80,8 +85,8 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
     const mine = lg.rows.find((r) => r.is_mine);
     if (mine) { myRow = { ph: mine.pred_home, pa: mine.pred_away }; break; }
   }
-  const myPoints =
-    myRow && hasScore ? calcLivePoints(myRow.ph, myRow.pa, score!.home, score!.away) : null;
+  // Siempre se calcula con el marcador actual (0-0 si aún no inicia)
+  const myPoints = myRow ? calcLivePoints(myRow.ph, myRow.pa, score.home, score.away) : null;
 
   function ptsBg(p: number) {
     if (p >= 7) return '#d6f5e0';
@@ -128,13 +133,9 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
               <Text style={styles.teamName} numberOfLines={1}>{match.home_team}</Text>
             </View>
             <View style={styles.scoreMid}>
-              {hasScore && (isLive || isFinished) ? (
-                <Text style={styles.scoreNums}>{score!.home} <Text style={styles.scoreDash}>-</Text> {score!.away}</Text>
-              ) : (
-                <Text style={styles.scoreNums}>vs</Text>
-              )}
+              <Text style={styles.scoreNums}>{score.home} <Text style={styles.scoreDash}>-</Text> {score.away}</Text>
               <Text style={styles.scoreLabel}>
-                {isLive ? 'Marcador en vivo' : isFinished ? 'Resultado final' : 'Aún no inicia'}
+                {isLive ? 'Marcador en vivo' : isFinished ? 'Resultado final' : 'Aún no inicia (0-0)'}
               </Text>
             </View>
             <View style={styles.team}>
@@ -153,9 +154,9 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
                 {match.home_team} {myRow.ph} - {myRow.pa} {match.away_team}
               </Text>
             </View>
-            {myPoints !== null && (isLive || isFinished) && (
+            {myPoints !== null && (
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.myLbl}>{isFinished ? 'Ganaste' : 'Si acaba así'}</Text>
+                <Text style={styles.myLbl}>{isFinished ? 'Ganaste' : 'Si queda así'}</Text>
                 <View style={[styles.myPtsBadge, { backgroundColor: myPoints > 0 ? Colors.gold : 'rgba(255,255,255,0.18)' }]}>
                   <Text style={[styles.myPtsText, { color: myPoints > 0 ? '#1a1a2e' : '#fff' }]}>
                     {myPoints} pts {myPoints >= 7 ? '✓' : ''}
@@ -178,26 +179,21 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
             <Text style={styles.secTitle}>📋 Predicciones de este partido</Text>
             <Text style={styles.hint}>
               {isLive
-                ? `Puntos con el marcador actual ${score!.home}-${score!.away}. Se actualiza solo cada minuto.`
+                ? `Puntos con el marcador en vivo ${score.home}-${score.away}. Se actualiza solo cada minuto.`
                 : isFinished
                 ? 'Puntos finales de este partido.'
-                : 'Predicciones registradas. Los puntos aparecerán cuando inicie el partido.'}
+                : `Puntos posibles si el partido queda ${score.home}-${score.away}. Cambian con cada gol.`}
             </Text>
 
             {leagues.map((lg) => {
-              // calcular puntos y ordenar
+              // calcular puntos (siempre, con marcador actual 0-0 de base) y ordenar
               const rows = lg.rows
                 .map((r) => ({
                   ...r,
-                  pts: hasScore && (isLive || isFinished)
-                    ? calcLivePoints(r.pred_home, r.pred_away, score!.home, score!.away)
-                    : null,
+                  pts: calcLivePoints(r.pred_home, r.pred_away, score.home, score.away),
                 }))
-                .sort((a, b) => {
-                  if (a.pts === null || b.pts === null) return a.alias.localeCompare(b.alias);
-                  return b.pts - a.pts || a.alias.localeCompare(b.alias);
-                });
-              const topPts = rows.length && rows[0].pts !== null ? rows[0].pts : null;
+                .sort((a, b) => b.pts - a.pts || a.alias.localeCompare(b.alias));
+              const topPts = rows.length ? rows[0].pts : null;
 
               return (
                 <View key={lg.league_id} style={styles.league}>
@@ -213,8 +209,8 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
                     <Text style={[styles.th, styles.thC, { width: 56 }]}>Puntos</Text>
                   </View>
 
-                  {rows.map((r, i) => {
-                    const isLeader = r.pts !== null && topPts !== null && r.pts === topPts && r.pts > 0;
+                  {rows.map((r) => {
+                    const isLeader = topPts !== null && r.pts === topPts && r.pts > 0;
                     return (
                       <View key={r.member_id} style={[styles.tr, r.is_mine && styles.trMine]}>
                         <Text style={[styles.qname, r.is_mine && styles.qnameMine]} numberOfLines={1}>
@@ -224,13 +220,9 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
                           {r.pred_home} - {r.pred_away}
                         </Text>
                         <View style={{ width: 56, alignItems: 'center' }}>
-                          {r.pts === null ? (
-                            <Text style={styles.ptsPending}>—</Text>
-                          ) : (
-                            <View style={[styles.ptsPill, { backgroundColor: ptsBg(r.pts) }]}>
-                              <Text style={[styles.ptsPillText, { color: ptsColor(r.pts) }]}>{r.pts}</Text>
-                            </View>
-                          )}
+                          <View style={[styles.ptsPill, { backgroundColor: ptsBg(r.pts) }]}>
+                            <Text style={[styles.ptsPillText, { color: ptsColor(r.pts) }]}>{r.pts}</Text>
+                          </View>
                         </View>
                       </View>
                     );
