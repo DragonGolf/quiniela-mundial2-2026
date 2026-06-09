@@ -112,6 +112,9 @@ export default function AdminScreen() {
       joined_at: m.joined_at,
       profile: { name: m.profile_name ?? 'Jugador' },
       league: { id: m.league_id, name: m.league_name ?? '', code: m.league_code ?? '' },
+      match_preds: Number(m.match_preds ?? 0),
+      group_preds: Number(m.group_preds ?? 0),
+      podium_preds: Number(m.podium_preds ?? 0),
     }));
 
     console.log('admin_get_all_members returned', allMembers.length, 'rows, error:', membersError?.message);
@@ -127,6 +130,17 @@ export default function AdminScreen() {
     }
     setUsersWithEntries(Array.from(userMap.values()).sort((a, b) => a.realName.localeCompare(b.realName)));
 
+    // Conteos de predicciones directo del RPC (evita el límite de 1000 filas)
+    const stats: Record<string, { matchPreds: number; hasGroups: boolean; hasPodio: boolean }> = {};
+    for (const m of allMembers as any[]) {
+      stats[m.id] = {
+        matchPreds: m.match_preds,
+        hasGroups: m.group_preds > 0,
+        hasPodio: m.podium_preds > 0,
+      };
+    }
+    setPredStats(stats);
+
     if (allMembers.length > 0) {
       // Fetch emails via admin RPC
       const { data: emailData } = await supabase.rpc('admin_get_user_emails');
@@ -135,28 +149,6 @@ export default function AdminScreen() {
         for (const row of emailData) em[row.id] = row.email ?? '';
         setEmailMap(em);
       }
-
-      // Fetch prediction stats for all member IDs
-      const memberIds = allMembers.map((m: any) => m.id);
-      const [{ data: matchPredData }, { data: groupPredData }, { data: podioPredData }] = await Promise.all([
-        supabase.from('league_predictions').select('league_member_id').in('league_member_id', memberIds),
-        supabase.from('member_group_predictions').select('league_member_id').in('league_member_id', memberIds),
-        supabase.from('member_podium_predictions').select('league_member_id').in('league_member_id', memberIds),
-      ]);
-
-      // Build stats map
-      const stats: Record<string, { matchPreds: number; hasGroups: boolean; hasPodio: boolean }> = {};
-      for (const id of memberIds) stats[id] = { matchPreds: 0, hasGroups: false, hasPodio: false };
-      for (const p of matchPredData ?? []) {
-        if (stats[p.league_member_id]) stats[p.league_member_id].matchPreds++;
-      }
-      for (const p of groupPredData ?? []) {
-        if (stats[p.league_member_id]) stats[p.league_member_id].hasGroups = true;
-      }
-      for (const p of podioPredData ?? []) {
-        if (stats[p.league_member_id]) stats[p.league_member_id].hasPodio = true;
-      }
-      setPredStats(stats);
     }
 
     setLoading(false);
