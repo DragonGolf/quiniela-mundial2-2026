@@ -66,6 +66,8 @@ export default function AdminScreen() {
   const [moveEntryId, setMoveEntryId] = useState<string | null>(null); // entry.id being moved
   const [allLeagues, setAllLeagues] = useState<{ id: string; name: string; code: string }[]>([]);
   const [movingId, setMovingId] = useState<string | null>(null);
+  // Ligas colapsadas (por leagueId) en la sección de pagos
+  const [collapsedLeagues, setCollapsedLeagues] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (profile && !profile.is_admin) {
@@ -336,23 +338,50 @@ export default function AdminScreen() {
           }
           const ligaGroups = Array.from(ligaMap.values()).sort((a, b) => a.leagueName.localeCompare(b.leagueName));
 
-          return ligaGroups.map(liga => {
+          return (
+          <>
+          {/* Controles colapsar/expandir todas */}
+          <View style={styles.collapseControls}>
+            <TouchableOpacity
+              style={styles.collapseCtrlBtn}
+              onPress={() => {
+                const all: Record<string, boolean> = {};
+                for (const g of ligaGroups) all[g.leagueId] = true;
+                setCollapsedLeagues(all);
+              }}
+            >
+              <Text style={styles.collapseCtrlText}>▸ Colapsar todas</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.collapseCtrlBtn}
+              onPress={() => setCollapsedLeagues({})}
+            >
+              <Text style={styles.collapseCtrlText}>▾ Expandir todas</Text>
+            </TouchableOpacity>
+          </View>
+          {ligaGroups.map(liga => {
             const ligaPaid = liga.rows.filter(r => r.entry.is_paid).length;
+            const isCollapsed = collapsedLeagues[liga.leagueId] ?? false;
             return (
               <View key={liga.leagueId} style={styles.ligaSection}>
-                {/* Encabezado de liga */}
-                <View style={styles.ligaSectionHeader}>
+                {/* Encabezado de liga (tap para colapsar/expandir) */}
+                <TouchableOpacity
+                  style={styles.ligaSectionHeader}
+                  onPress={() => setCollapsedLeagues(prev => ({ ...prev, [liga.leagueId]: !isCollapsed }))}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.ligaCollapseIcon}>{isCollapsed ? '▸' : '▾'}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.ligaSectionName}>{liga.leagueName}</Text>
-                    <Text style={styles.ligaSectionCode}>Código: {liga.leagueCode}</Text>
+                    <Text style={styles.ligaSectionCode}>Código: {liga.leagueCode} · {liga.rows.length} jugador{liga.rows.length === 1 ? '' : 'es'}</Text>
                   </View>
                   <View style={styles.ligaPaidBadge}>
                     <Text style={styles.ligaPaidBadgeText}>{ligaPaid}/{liga.rows.length} pagados</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
                 {/* Filas de jugadores en esta liga */}
-                {liga.rows.map(({ entry, realName }) => {
+                {!isCollapsed && liga.rows.map(({ entry, realName }) => {
                   const ps = predStats[entry.id] ?? { matchPreds: 0, hasGroups: false, hasPodio: false };
                   const hasAny = ps.matchPreds > 0 || ps.hasGroups || ps.hasPodio;
                   const allDone = ps.matchPreds === totalMatches && ps.hasGroups && ps.hasPodio;
@@ -438,7 +467,9 @@ export default function AdminScreen() {
                 })}
               </View>
             );
-          });
+          })}
+          </>
+          );
         })()}
       </View>
 
@@ -688,9 +719,17 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
   },
   ligaSectionHeader: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 10,
   },
+  ligaCollapseIcon: { fontSize: 16, fontWeight: '800', color: Colors.gold, width: 16, textAlign: 'center' },
+  collapseControls: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  collapseCtrlBtn: {
+    flex: 1, paddingVertical: 8, borderRadius: 8,
+    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  collapseCtrlText: { fontSize: 12, fontWeight: '700', color: Colors.text },
   ligaSectionName: { fontSize: 15, fontWeight: '800', color: Colors.white },
   ligaSectionCode: { fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 1 },
   ligaPaidBadge: {
