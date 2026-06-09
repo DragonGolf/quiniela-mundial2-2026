@@ -9,6 +9,7 @@ import { useLeague } from '@/lib/league';
 import {
   getMyLeagues, joinLeague, addLeagueEntry,
   getLeagueMembers, setLeagueMemberPaidById, renameLeagueEntry, deleteLeagueEntry,
+  updateLeaguePrize,
 } from '@/lib/api';
 import { exportLeagueToExcel } from '@/lib/export';
 import { Colors } from '@/constants/Colors';
@@ -56,6 +57,13 @@ export default function LigasScreen() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null); // league id being exported
+
+  // Editar premios
+  const [prizeLeagueId, setPrizeLeagueId] = useState<string | null>(null); // liga abierta para editar premio
+  const [prizePrice, setPrizePrice] = useState('');
+  const [prizeDesc, setPrizeDesc] = useState('');
+  const [savingPrize, setSavingPrize] = useState(false);
+  const [prizeMsg, setPrizeMsg] = useState('');
 
   useEffect(() => {
     if (profile) load();
@@ -164,6 +172,34 @@ export default function LigasScreen() {
       console.error('Export error:', e);
     } finally {
       setExporting(null);
+    }
+  }
+
+  function openPrizeEditor(league: LeagueEntry) {
+    if (prizeLeagueId === league.id) { setPrizeLeagueId(null); return; }
+    setPrizeLeagueId(league.id);
+    setPrizePrice(league.entry_price ? String(league.entry_price) : '');
+    setPrizeDesc(league.prize_description ?? '');
+    setPrizeMsg('');
+  }
+
+  async function handleSavePrize(leagueId: string) {
+    const price = parseFloat(prizePrice) || 0;
+    setSavingPrize(true);
+    setPrizeMsg('');
+    try {
+      await updateLeaguePrize(leagueId, price, prizeDesc.trim());
+      setPrizeMsg('✅ Premios actualizados');
+      // refrescar activeLeague si es la misma
+      if (activeLeague?.id === leagueId) {
+        setActiveLeague({ ...activeLeague, entry_price: price, prize_description: prizeDesc.trim() || null });
+      }
+      await load();
+      setTimeout(() => { setPrizeLeagueId(null); setPrizeMsg(''); }, 1200);
+    } catch (e: any) {
+      setPrizeMsg('❌ ' + (e?.message || 'No se pudo guardar'));
+    } finally {
+      setSavingPrize(false);
     }
   }
 
@@ -453,6 +489,50 @@ export default function LigasScreen() {
                           </Text>
                         </TouchableOpacity>
 
+                        {/* Editar premios */}
+                        <TouchableOpacity
+                          style={styles.adminToggle}
+                          onPress={() => openPrizeEditor(league)}
+                        >
+                          <Text style={styles.adminToggleText}>
+                            💰 Editar premios {prizeLeagueId === league.id ? '▲' : '▼'}
+                          </Text>
+                        </TouchableOpacity>
+                        {prizeLeagueId === league.id && (
+                          <View style={styles.prizeBox}>
+                            <Text style={styles.prizeLabel}>Precio de entrada por quiniela ($)</Text>
+                            <Text style={styles.prizeHint}>Pon 0 si el premio es fijo (lo da alguien)</Text>
+                            <TextInput
+                              style={styles.prizeInput}
+                              value={prizePrice}
+                              onChangeText={setPrizePrice}
+                              keyboardType="numeric"
+                              placeholder="0"
+                              placeholderTextColor="rgba(255,255,255,0.4)"
+                            />
+                            <Text style={[styles.prizeLabel, { marginTop: 12 }]}>Descripción del premio</Text>
+                            <Text style={styles.prizeHint}>Ej: "Premio fijo de $5,000 que aporta Juan. 1er lugar se lo lleva."</Text>
+                            <TextInput
+                              style={[styles.prizeInput, { height: 80, textAlignVertical: 'top' }]}
+                              value={prizeDesc}
+                              onChangeText={setPrizeDesc}
+                              placeholder="Describe el premio..."
+                              placeholderTextColor="rgba(255,255,255,0.4)"
+                              multiline
+                              maxLength={300}
+                            />
+                            {prizeMsg ? <Text style={styles.prizeMsgText}>{prizeMsg}</Text> : null}
+                            <View style={styles.prizeBtns}>
+                              <TouchableOpacity style={styles.prizeCancelBtn} onPress={() => setPrizeLeagueId(null)}>
+                                <Text style={styles.prizeCancelText}>Cancelar</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.prizeSaveBtn} onPress={() => handleSavePrize(league.id)} disabled={savingPrize}>
+                                {savingPrize ? <ActivityIndicator color={Colors.white} size="small" /> : <Text style={styles.prizeSaveText}>Guardar</Text>}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        )}
+
                         {/* Export button */}
                         <TouchableOpacity
                           style={[styles.exportBtn, exporting === league.id && styles.exportBtnBusy]}
@@ -657,6 +737,20 @@ const styles = StyleSheet.create({
   adminMemberInfo: { flex: 1 },
   adminAlias: { fontSize: 14, fontWeight: '700', color: Colors.white },
   adminProfileName: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 1 },
+  prizeBox: { marginHorizontal: 12, marginBottom: 8, padding: 12, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10 },
+  prizeLabel: { fontSize: 13, color: Colors.white, fontWeight: '700' },
+  prizeHint: { fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2, marginBottom: 6 },
+  prizeInput: {
+    borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', minHeight: 42,
+    paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, color: Colors.white,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+  },
+  prizeMsgText: { fontSize: 12, color: Colors.white, fontWeight: '600', marginTop: 8, textAlign: 'center' },
+  prizeBtns: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  prizeCancelBtn: { flex: 1, height: 40, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  prizeCancelText: { fontSize: 13, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
+  prizeSaveBtn: { flex: 1, height: 40, borderRadius: 8, backgroundColor: Colors.gold, alignItems: 'center', justifyContent: 'center' },
+  prizeSaveText: { fontSize: 13, color: Colors.white, fontWeight: '700' },
   paidToggle: { height: 32, paddingHorizontal: 12, borderRadius: 16, alignItems: 'center', justifyContent: 'center', minWidth: 90 },
   paidToggleOn: { backgroundColor: 'rgba(76,175,80,0.8)' },
   paidToggleOff: { backgroundColor: 'rgba(244,67,54,0.7)' },

@@ -30,20 +30,26 @@ export default function RegistroScreen() {
   const [matchInfo, setMatchInfo] = useState<Record<number, MatchInfo>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showMatchesFor, setShowMatchesFor] = useState<string | null>(null);
+  // Datos de premio frescos de la liga (por si el admin los editó)
+  const [entryPrice, setEntryPrice] = useState<number>(0);
+  const [prizeDesc, setPrizeDesc] = useState<string | null>(null);
 
   const locked = isPredictionsLocked();
 
   const load = useCallback(async () => {
     if (!activeLeague) return;
     try {
-      const [mem, pod, grp, mpr, { data: matches }] = await Promise.all([
+      const [mem, pod, grp, mpr, { data: matches }, { data: leagueRow }] = await Promise.all([
         getRegistroMembers(activeLeague.id),
         getRegistroPodium(activeLeague.id),
         getRegistroGroups(activeLeague.id),
         getRegistroMatches(activeLeague.id),
         supabase.from('matches').select('id, home_team, away_team, home_flag, away_flag, group_name, match_date').order('match_date'),
+        supabase.from('leagues').select('entry_price, prize_description').eq('id', activeLeague.id).single(),
       ]);
       setMembers(mem);
+      setEntryPrice(Number(leagueRow?.entry_price ?? activeLeague.entry_price ?? 0));
+      setPrizeDesc(leagueRow?.prize_description ?? activeLeague.prize_description ?? null);
 
       const podMap: Record<string, RegistroPodium> = {};
       for (const p of pod) podMap[p.member_id] = p;
@@ -80,7 +86,7 @@ export default function RegistroScreen() {
 
   // ── Cálculo de premios ──
   const paidCount = members.filter((m) => m.is_paid).length;
-  const price = activeLeague.entry_price ?? 0;
+  const price = entryPrice;
   const pozo = price * paidCount;
   const fee = pozo * (ADMIN_FEE_PERCENT / 100);
   const repartir = pozo - fee;
@@ -103,6 +109,14 @@ export default function RegistroScreen() {
       {/* Premios */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🏆 Premios</Text>
+
+        {/* Descripción del premio (premio fijo o nota) */}
+        {prizeDesc ? (
+          <View style={styles.prizeNote}>
+            <Text style={styles.prizeNoteText}>{prizeDesc}</Text>
+          </View>
+        ) : null}
+
         {price > 0 ? (
           <>
             <Row label="Entrada por quiniela" value={fmt(price)} />
@@ -115,15 +129,14 @@ export default function RegistroScreen() {
             <Row label="🥈 2do lugar (25%)" value={fmt(repartir * 0.25)} />
             <Row label="🥉 3er lugar (5%)" value={fmt(repartir * 0.05)} />
           </>
-        ) : (
+        ) : !prizeDesc ? (
           <>
-            <Text style={styles.dim}>Esta liga no tiene precio de entrada configurado. Distribución de premios:</Text>
+            <Text style={styles.dim}>Premio aún no configurado por el organizador. Distribución estándar:</Text>
             <Row label="🥇 1er lugar" value="70% del pozo" gold />
             <Row label="🥈 2do lugar" value="25% del pozo" />
             <Row label="🥉 3er lugar" value="5% del pozo" />
-            <Text style={[styles.dim, { marginTop: 6 }]}>Se descuenta {ADMIN_FEE_PERCENT}% por gestión y cobros.</Text>
           </>
-        )}
+        ) : null}
       </View>
 
       {/* Aviso de visibilidad */}
@@ -277,6 +290,8 @@ const styles = StyleSheet.create({
   rowValueBold: { fontSize: 16, fontWeight: '800' },
   rowValueGold: { color: Colors.gold },
   divider: { height: 1, backgroundColor: Colors.border, marginVertical: 6 },
+  prizeNote: { backgroundColor: '#fff8e1', borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#ffe082' },
+  prizeNoteText: { fontSize: 14, color: '#7a5a00', fontWeight: '600', lineHeight: 20 },
   noticeLock: { backgroundColor: '#fff8e1', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#ffecb3', marginBottom: 14 },
   noticeLockText: { fontSize: 12, color: '#8a6d00', fontWeight: '600', lineHeight: 17 },
   secTitle: { fontSize: 13, fontWeight: '800', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10, marginLeft: 2 },
