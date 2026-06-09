@@ -442,6 +442,23 @@ export async function setLeagueMemberPaidById(memberId: string, paid: boolean): 
   if (error) throw error;
 }
 
+export async function moveLeagueEntry(memberId: string, newLeagueId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_move_member_to_league', {
+    p_member_id: memberId,
+    p_new_league_id: newLeagueId,
+  });
+  if (error) throw error;
+}
+
+export async function getAllLeagues(): Promise<{ id: string; name: string; code: string }[]> {
+  const { data, error } = await supabase
+    .from('leagues')
+    .select('id, name, code')
+    .order('name');
+  if (error) throw error;
+  return data || [];
+}
+
 // ── Per-member group predictions ──────────────────────────────────
 export async function getMemberGroupPredictions(memberId: string): Promise<GroupPrediction[]> {
   const { data } = await supabase
