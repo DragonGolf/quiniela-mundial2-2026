@@ -7,6 +7,7 @@ import FlagImage from './FlagImage';
 interface Props {
   match: MatchWithPrediction;
   onPress: () => void;
+  onViewPredictions?: () => void;
 }
 
 function getCardBg(match: MatchWithPrediction): string {
@@ -26,7 +27,7 @@ function isWithin1Hour(match: MatchWithPrediction): boolean {
   return minsUntil < 60;
 }
 
-export default function MatchCard({ match, onPress }: Props) {
+export default function MatchCard({ match, onPress, onViewPredictions }: Props) {
   const isUpcoming = match.status === 'upcoming';
   const isLive = match.status === 'live';
   const isFinished = match.status === 'finished';
@@ -51,10 +52,21 @@ export default function MatchCard({ match, onPress }: Props) {
         <Text style={styles.stage}>
           {match.group_name ? `Grupo ${match.group_name}` : StageLabels[match.stage]}
         </Text>
-        <View style={[styles.badge, isLive && styles.badgeLive, isFinished && styles.badgeFinished]}>
-          <Text style={[styles.badgeText, isLive && styles.badgeTextLive]}>
-            {isLive ? '● ' : ''}{StatusLabels[match.status]}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {onViewPredictions && (
+            <TouchableOpacity
+              onPress={onViewPredictions}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.viewBtn}
+            >
+              <Text style={styles.viewBtnText}>👁 Ver</Text>
+            </TouchableOpacity>
+          )}
+          <View style={[styles.badge, isLive && styles.badgeLive, isFinished && styles.badgeFinished]}>
+            <Text style={[styles.badgeText, isLive && styles.badgeTextLive]}>
+              {isLive ? '● ' : ''}{StatusLabels[match.status]}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -140,6 +152,11 @@ const styles = StyleSheet.create({
   badgeLive: { backgroundColor: '#ffe5e5' },
   badgeFinished: { backgroundColor: '#f0f0f0' },
   badgeText: { fontSize: 11, fontWeight: '600', color: Colors.textSecondary },
+  viewBtn: {
+    paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20,
+    backgroundColor: Colors.primary,
+  },
+  viewBtnText: { fontSize: 11, fontWeight: '700', color: Colors.white },
   badgeTextLive: { color: Colors.live },
   teamsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   team: { flex: 1, alignItems: 'center', gap: 4 },

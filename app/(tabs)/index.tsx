@@ -125,7 +125,11 @@ export default function MatchesScreen() {
         sections={sections}
         keyExtractor={item => String(item.id)}
         renderItem={({ item }) => (
-          <MatchCard match={item} onPress={() => handlePress(item)} />
+          <MatchCard
+            match={item}
+            onPress={() => handlePress(item)}
+            onViewPredictions={() => setLiveSelected(item)}
+          />
         )}
         renderSectionHeader={({ section }) => (
           <Text style={styles.sectionHeader}>{section.title}</Text>
