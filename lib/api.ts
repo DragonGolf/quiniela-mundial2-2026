@@ -427,6 +427,22 @@ export async function updateLeagueRules(leagueId: string, rules: Partial<League>
   if (error) throw error;
 }
 
+// Todas las ligas con sus datos de premio (solo admin global)
+export interface AdminLeaguePrize {
+  id: string; name: string; code: string;
+  entry_price: number; prize_description: string | null; organizer_commission: number;
+}
+export async function getAdminLeagues(): Promise<AdminLeaguePrize[]> {
+  const { data, error } = await supabase.rpc('admin_get_leagues');
+  if (error) throw error;
+  return ((data as any[]) || []).map((l) => ({
+    id: l.id, name: l.name, code: l.code,
+    entry_price: Number(l.entry_price ?? 0),
+    prize_description: l.prize_description ?? null,
+    organizer_commission: Number(l.organizer_commission ?? 0),
+  }));
+}
+
 // Edita precio de entrada, descripción del premio y comisión (vía RPC, bypassa RLS)
 export async function updateLeaguePrize(
   leagueId: string, entryPrice: number, prizeDescription: string, commission: number

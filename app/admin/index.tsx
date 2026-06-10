@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { triggerMatchSync, adminUpdateMatch, adminClearMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues } from '@/lib/api';
+import { triggerMatchSync, adminUpdateMatch, adminClearMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues, getAdminLeagues, updateLeaguePrize, AdminLeaguePrize } from '@/lib/api';
 import { exportPaymentList } from '@/lib/export';
 import { GroupResult, LeagueMember } from '@/lib/types';
 import { TournamentResult, Match } from '@/lib/types';
@@ -68,6 +68,14 @@ export default function AdminScreen() {
   const [movingId, setMovingId] = useState<string | null>(null);
   // Ligas colapsadas (por leagueId) en la sección de pagos
   const [collapsedLeagues, setCollapsedLeagues] = useState<Record<string, boolean>>({});
+  // Premios por liga (admin global)
+  const [adminLeaguesList, setAdminLeaguesList] = useState<AdminLeaguePrize[]>([]);
+  const [prizeEditId, setPrizeEditId] = useState<string | null>(null);
+  const [pzPrice, setPzPrice] = useState('');
+  const [pzDesc, setPzDesc] = useState('');
+  const [pzComm, setPzComm] = useState('');
+  const [pzSaving, setPzSaving] = useState(false);
+  const [pzMsg, setPzMsg] = useState('');
 
   useEffect(() => {
     if (profile && !profile.is_admin) {
@@ -153,8 +161,41 @@ export default function AdminScreen() {
       }
     }
 
+    // Todas las ligas (para editar premios desde aquí)
+    try {
+      const leagues = await getAdminLeagues();
+      setAdminLeaguesList(leagues);
+    } catch (e) {
+      console.error('getAdminLeagues error:', e);
+    }
+
     setLoading(false);
     setRefreshing(false);
+  }
+
+  function openPrizeEdit(l: AdminLeaguePrize) {
+    if (prizeEditId === l.id) { setPrizeEditId(null); return; }
+    setPrizeEditId(l.id);
+    setPzPrice(l.entry_price ? String(l.entry_price) : '');
+    setPzDesc(l.prize_description ?? '');
+    setPzComm(l.organizer_commission ? String(l.organizer_commission) : '');
+    setPzMsg('');
+  }
+
+  async function savePrizeEdit(leagueId: string) {
+    setPzSaving(true);
+    setPzMsg('');
+    try {
+      await updateLeaguePrize(leagueId, parseFloat(pzPrice) || 0, pzDesc.trim(), parseFloat(pzComm) || 0);
+      setPzMsg('✅ Guardado');
+      const leagues = await getAdminLeagues();
+      setAdminLeaguesList(leagues);
+      setTimeout(() => { setPrizeEditId(null); setPzMsg(''); }, 1000);
+    } catch (e: any) {
+      setPzMsg('❌ ' + (e?.message || 'No se pudo guardar'));
+    } finally {
+      setPzSaving(false);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -486,6 +527,47 @@ export default function AdminScreen() {
         })()}
       </View>
 
+      {/* Premios por liga */}
+      <View style={styles.trSection}>
+        <Text style={styles.trTitle}>💰 Premios por liga</Text>
+        <Text style={styles.trHint}>Edita el precio, premio y comisión de cualquier liga (aunque no tengas quiniela en ella)</Text>
+        {adminLeaguesList.length === 0 ? (
+          <Text style={styles.trHint}>No hay ligas.</Text>
+        ) : adminLeaguesList.map((l) => (
+          <View key={l.id} style={styles.pzLeague}>
+            <TouchableOpacity style={styles.pzHead} onPress={() => openPrizeEdit(l)}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pzName}>{l.name}</Text>
+                <Text style={styles.pzMeta}>
+                  {l.entry_price > 0 ? `$${l.entry_price.toLocaleString('es-MX')} entrada` : 'Premio fijo'}
+                  {' · '}{l.organizer_commission > 0 ? `${l.organizer_commission}% comisión` : 'sin comisión'}
+                </Text>
+              </View>
+              <Text style={styles.pzChevron}>{prizeEditId === l.id ? '▲' : '✏️'}</Text>
+            </TouchableOpacity>
+            {prizeEditId === l.id && (
+              <View style={styles.pzBox}>
+                <Text style={styles.pzLabel}>Precio de entrada ($) — 0 si es premio fijo</Text>
+                <TextInput style={styles.pzInput} value={pzPrice} onChangeText={setPzPrice} keyboardType="numeric" placeholder="0" placeholderTextColor={Colors.textSecondary} />
+                <Text style={[styles.pzLabel, { marginTop: 10 }]}>Descripción del premio</Text>
+                <TextInput style={[styles.pzInput, { height: 76, textAlignVertical: 'top' }]} value={pzDesc} onChangeText={setPzDesc} multiline maxLength={300} placeholder="Ej: 60% 1ro, 30% 2do, 10% 3ro" placeholderTextColor={Colors.textSecondary} />
+                <Text style={[styles.pzLabel, { marginTop: 10 }]}>Comisión (%) — 0 si no se cobra</Text>
+                <TextInput style={styles.pzInput} value={pzComm} onChangeText={setPzComm} keyboardType="numeric" placeholder="0" placeholderTextColor={Colors.textSecondary} />
+                {pzMsg ? <Text style={styles.pzMsg}>{pzMsg}</Text> : null}
+                <View style={styles.pzBtns}>
+                  <TouchableOpacity style={styles.pzCancel} onPress={() => setPrizeEditId(null)}>
+                    <Text style={styles.pzCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.pzSave} onPress={() => savePrizeEdit(l.id)} disabled={pzSaving}>
+                    {pzSaving ? <ActivityIndicator size="small" color={Colors.white} /> : <Text style={styles.pzSaveText}>Guardar</Text>}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        ))}
+      </View>
+
       {/* Tournament results */}
       <View style={styles.trSection}>
         <Text style={styles.trTitle}>🏆 Resultados Finales del Torneo</Text>
@@ -766,6 +848,23 @@ const styles = StyleSheet.create({
   entryExpandHint: { fontSize: 11, color: Colors.textSecondary },
   entryEmail: { fontSize: 12, color: Colors.primary, marginBottom: 3, fontStyle: 'italic' },
   entryActions: { alignItems: 'flex-end', gap: 6 },
+  pzLeague: { borderWidth: 1, borderColor: Colors.border, borderRadius: 10, marginBottom: 8, overflow: 'hidden' },
+  pzHead: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: Colors.background },
+  pzName: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  pzMeta: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  pzChevron: { fontSize: 15, marginLeft: 8 },
+  pzBox: { padding: 12 },
+  pzLabel: { fontSize: 12, fontWeight: '600', color: Colors.text, marginBottom: 4 },
+  pzInput: {
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: 8, minHeight: 40,
+    paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: Colors.text, backgroundColor: Colors.background,
+  },
+  pzMsg: { fontSize: 12, fontWeight: '600', color: Colors.text, marginTop: 8, textAlign: 'center' },
+  pzBtns: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  pzCancel: { flex: 1, height: 40, borderRadius: 8, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  pzCancelText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600' },
+  pzSave: { flex: 1, height: 40, borderRadius: 8, backgroundColor: Colors.gold, alignItems: 'center', justifyContent: 'center' },
+  pzSaveText: { fontSize: 13, color: Colors.white, fontWeight: '700' },
   moveBtn: {
     width: 32, height: 32, borderRadius: 8,
     backgroundColor: '#e8f4fd', alignItems: 'center', justifyContent: 'center',
