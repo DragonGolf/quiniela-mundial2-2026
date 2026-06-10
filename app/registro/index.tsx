@@ -6,7 +6,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useLeague } from '@/lib/league';
 import { Colors } from '@/constants/Colors';
-import { ADMIN_FEE_PERCENT, isPredictionsLocked, LOCK_DATE_STR } from '@/lib/constants';
+import { isPredictionsLocked, LOCK_DATE_STR } from '@/lib/constants';
 import {
   getRegistroMembers, getRegistroPodium, getRegistroGroups, getRegistroMatches,
   RegistroMember, RegistroPodium, RegistroGroup, RegistroMatchPred,
@@ -33,6 +33,7 @@ export default function RegistroScreen() {
   // Datos de premio frescos de la liga (por si el admin los editó)
   const [entryPrice, setEntryPrice] = useState<number>(0);
   const [prizeDesc, setPrizeDesc] = useState<string | null>(null);
+  const [commission, setCommission] = useState<number>(0);
 
   const locked = isPredictionsLocked();
 
@@ -45,11 +46,12 @@ export default function RegistroScreen() {
         getRegistroGroups(activeLeague.id),
         getRegistroMatches(activeLeague.id),
         supabase.from('matches').select('id, home_team, away_team, home_flag, away_flag, group_name, match_date').order('match_date'),
-        supabase.from('leagues').select('entry_price, prize_description').eq('id', activeLeague.id).single(),
+        supabase.from('leagues').select('entry_price, prize_description, organizer_commission').eq('id', activeLeague.id).single(),
       ]);
       setMembers(mem);
       setEntryPrice(Number(leagueRow?.entry_price ?? activeLeague.entry_price ?? 0));
       setPrizeDesc(leagueRow?.prize_description ?? activeLeague.prize_description ?? null);
+      setCommission(Number(leagueRow?.organizer_commission ?? 0));
 
       const podMap: Record<string, RegistroPodium> = {};
       for (const p of pod) podMap[p.member_id] = p;
@@ -88,7 +90,7 @@ export default function RegistroScreen() {
   const paidCount = members.filter((m) => m.is_paid).length;
   const price = entryPrice;
   const pozo = price * paidCount;
-  const fee = pozo * (ADMIN_FEE_PERCENT / 100);
+  const fee = pozo * (commission / 100);
   const repartir = pozo - fee;
   const fmt = (n: number) => '$' + n.toLocaleString('es-MX', { maximumFractionDigits: 0 });
 
@@ -121,21 +123,23 @@ export default function RegistroScreen() {
           <>
             <Row label="Entrada por quiniela" value={fmt(price)} />
             <Row label={`Pozo (${paidCount} pagadas)`} value={fmt(pozo)} />
-            <Row label={`Gestión y cobros (${ADMIN_FEE_PERCENT}%)`} value={'- ' + fmt(fee)} dim />
-            <View style={styles.divider} />
-            <Row label="A repartir" value={fmt(repartir)} bold />
-            <View style={styles.divider} />
-            <Row label="🥇 1er lugar (70%)" value={fmt(repartir * 0.70)} gold />
-            <Row label="🥈 2do lugar (25%)" value={fmt(repartir * 0.25)} />
-            <Row label="🥉 3er lugar (5%)" value={fmt(repartir * 0.05)} />
+            {commission > 0 && (
+              <>
+                <Row label={`Comisión organizador (${commission}%)`} value={'- ' + fmt(fee)} dim />
+                <View style={styles.divider} />
+                <Row label="A repartir" value={fmt(repartir)} bold gold />
+              </>
+            )}
+            {commission === 0 && (
+              <>
+                <View style={styles.divider} />
+                <Row label="A repartir (sin comisión)" value={fmt(pozo)} bold gold />
+              </>
+            )}
+            {prizeDesc ? <Text style={[styles.dim, { marginTop: 8 }]}>El reparto se detalla arriba 👆</Text> : null}
           </>
         ) : !prizeDesc ? (
-          <>
-            <Text style={styles.dim}>Premio aún no configurado por el organizador. Distribución estándar:</Text>
-            <Row label="🥇 1er lugar" value="70% del pozo" gold />
-            <Row label="🥈 2do lugar" value="25% del pozo" />
-            <Row label="🥉 3er lugar" value="5% del pozo" />
-          </>
+          <Text style={styles.dim}>Premio aún no configurado por el organizador.</Text>
         ) : null}
       </View>
 

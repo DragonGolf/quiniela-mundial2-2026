@@ -62,6 +62,7 @@ export default function LigasScreen() {
   const [prizeLeagueId, setPrizeLeagueId] = useState<string | null>(null); // liga abierta para editar premio
   const [prizePrice, setPrizePrice] = useState('');
   const [prizeDesc, setPrizeDesc] = useState('');
+  const [prizeCommission, setPrizeCommission] = useState('');
   const [savingPrize, setSavingPrize] = useState(false);
   const [prizeMsg, setPrizeMsg] = useState('');
 
@@ -180,19 +181,21 @@ export default function LigasScreen() {
     setPrizeLeagueId(league.id);
     setPrizePrice(league.entry_price ? String(league.entry_price) : '');
     setPrizeDesc(league.prize_description ?? '');
+    setPrizeCommission(league.organizer_commission ? String(league.organizer_commission) : '');
     setPrizeMsg('');
   }
 
   async function handleSavePrize(leagueId: string) {
     const price = parseFloat(prizePrice) || 0;
+    const commission = parseFloat(prizeCommission) || 0;
     setSavingPrize(true);
     setPrizeMsg('');
     try {
-      await updateLeaguePrize(leagueId, price, prizeDesc.trim());
+      await updateLeaguePrize(leagueId, price, prizeDesc.trim(), commission);
       setPrizeMsg('✅ Premios actualizados');
       // refrescar activeLeague si es la misma
       if (activeLeague?.id === leagueId) {
-        setActiveLeague({ ...activeLeague, entry_price: price, prize_description: prizeDesc.trim() || null });
+        setActiveLeague({ ...activeLeague, entry_price: price, prize_description: prizeDesc.trim() || null, organizer_commission: commission });
       }
       await load();
       setTimeout(() => { setPrizeLeagueId(null); setPrizeMsg(''); }, 1200);
@@ -520,6 +523,16 @@ export default function LigasScreen() {
                               placeholderTextColor="rgba(255,255,255,0.4)"
                               multiline
                               maxLength={300}
+                            />
+                            <Text style={[styles.prizeLabel, { marginTop: 12 }]}>Comisión del organizador (%)</Text>
+                            <Text style={styles.prizeHint}>Pon 0 si no se cobra comisión. Ej: 10</Text>
+                            <TextInput
+                              style={styles.prizeInput}
+                              value={prizeCommission}
+                              onChangeText={setPrizeCommission}
+                              keyboardType="numeric"
+                              placeholder="0"
+                              placeholderTextColor="rgba(255,255,255,0.4)"
                             />
                             {prizeMsg ? <Text style={styles.prizeMsgText}>{prizeMsg}</Text> : null}
                             <View style={styles.prizeBtns}>

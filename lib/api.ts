@@ -427,14 +427,15 @@ export async function updateLeagueRules(leagueId: string, rules: Partial<League>
   if (error) throw error;
 }
 
-// Edita el precio de entrada y/o la descripción del premio (vía RPC, bypassa RLS)
+// Edita precio de entrada, descripción del premio y comisión (vía RPC, bypassa RLS)
 export async function updateLeaguePrize(
-  leagueId: string, entryPrice: number, prizeDescription: string
+  leagueId: string, entryPrice: number, prizeDescription: string, commission: number
 ): Promise<void> {
   const { error } = await supabase.rpc('admin_update_league_prize', {
     p_league_id: leagueId,
     p_entry_price: entryPrice,
     p_prize_description: prizeDescription || null,
+    p_commission: commission,
   });
   if (error) throw error;
 }
