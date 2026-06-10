@@ -13,19 +13,27 @@ function safeSheetName(name: string, used: Set<string>): string {
   return candidate;
 }
 
-const PAY_HEADERS = ['#', 'Nombre', 'Correo', 'Liga', 'Código', 'Alias quiniela', 'Pagado', 'Admin', 'Fecha ingreso', 'Monto pagado', 'Fecha pago', 'Notas'];
+const TOTAL_GROUPS = 12;
+const PAY_HEADERS = ['#', 'Nombre', 'Correo', 'Liga', 'Código', 'Alias quiniela', 'Pagado', 'Quiniela completa', 'Partidos', 'Grupos', 'Podio', 'Admin', 'Fecha ingreso', 'Monto pagado', 'Fecha pago', 'Notas'];
 const PAY_COLS = [
   { wch: 4 }, { wch: 22 }, { wch: 28 }, { wch: 18 }, { wch: 10 }, { wch: 18 },
-  { wch: 8 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 20 },
+  { wch: 8 }, { wch: 18 }, { wch: 10 }, { wch: 9 }, { wch: 7 },
+  { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 20 },
 ];
+const PAY_MERGE_LASTCOL = PAY_HEADERS.length - 1;
 
 interface PayMember {
   id: string; alias: string; is_paid: boolean; is_admin: boolean;
   joined_at: string; user_id: string; league_id: string;
   league_name: string; league_code: string; profile_name: string;
+  match_preds: number; group_preds: number; podium_preds: number;
 }
 
-function buildPayRows(list: PayMember[], emailMap: Record<string, string>) {
+function isComplete(m: PayMember, totalMatches: number): boolean {
+  return m.match_preds >= totalMatches && m.group_preds >= TOTAL_GROUPS && m.podium_preds >= 1;
+}
+
+function buildPayRows(list: PayMember[], emailMap: Record<string, string>, totalMatches: number) {
   return list.map((m, i) => [
     i + 1,
     m.profile_name ?? '',
@@ -34,6 +42,10 @@ function buildPayRows(list: PayMember[], emailMap: Record<string, string>) {
     m.league_code ?? '',
     m.alias ?? '',
     m.is_paid ? 'Sí' : 'No',
+    isComplete(m, totalMatches) ? 'Sí' : '⚠️ FALTA',
+    `${m.match_preds}/${totalMatches}`,
+    `${m.group_preds}/${TOTAL_GROUPS}`,
+    m.podium_preds >= 1 ? 'Sí' : 'No',
     m.is_admin ? 'Sí' : '',
     m.joined_at ? new Date(m.joined_at).toLocaleDateString('es-MX') : '',
     '', '', '', // Monto pagado / Fecha pago / Notas (llenar manualmente)
@@ -42,17 +54,22 @@ function buildPayRows(list: PayMember[], emailMap: Record<string, string>) {
 
 export async function exportPaymentList() {
   // Usar RPC admin_get_all_members (bypassa RLS) en vez de select directo
-  const [{ data: rawMembers, error: memErr }, { data: emailData }] = await Promise.all([
+  const [{ data: rawMembers, error: memErr }, { data: emailData }, { count: matchCount }] = await Promise.all([
     supabase.rpc('admin_get_all_members'),
     supabase.rpc('admin_get_user_emails'),
+    supabase.from('matches').select('id', { count: 'exact', head: true }),
   ]);
   if (memErr) { console.error('admin_get_all_members error:', memErr); }
+  const totalMatches = matchCount ?? 0;
 
   const members: PayMember[] = ((rawMembers as any[]) ?? []).map((m) => ({
     id: m.id, alias: m.alias, is_paid: m.is_paid, is_admin: m.is_admin,
     joined_at: m.joined_at, user_id: m.user_id, league_id: m.league_id,
     league_name: m.league_name ?? 'Sin liga', league_code: m.league_code ?? '',
     profile_name: m.profile_name ?? '',
+    match_preds: Number(m.match_preds ?? 0),
+    group_preds: Number(m.group_preds ?? 0),
+    podium_preds: Number(m.podium_preds ?? 0),
   }));
   if (members.length === 0) return;
 
@@ -62,27 +79,29 @@ export async function exportPaymentList() {
   const generated = new Date().toLocaleString('es-MX');
   const wb = XLSX.utils.book_new();
   const paidCount = members.filter(m => m.is_paid).length;
+  const incompleteCount = members.filter(m => !isComplete(m, totalMatches)).length;
 
   // ── Hoja 1: GENERAL (todas las ligas) ──
   const wsGen = XLSX.utils.aoa_to_sheet([
     ['Lista de Pagos GENERAL — Quiniela Mundial 2026'],
     [`Generado: ${generated}`],
-    [`Total participantes: ${members.length}   |   Pagados: ${paidCount}   |   Pendientes: ${members.length - paidCount}`],
+    [`Total: ${members.length}   |   Pagados: ${paidCount}   |   Pendientes pago: ${members.length - paidCount}   |   Quiniela incompleta: ${incompleteCount}`],
     [],
     PAY_HEADERS,
-    ...buildPayRows(members, emailMap),
+    ...buildPayRows(members, emailMap, totalMatches),
   ]);
   wsGen['!cols'] = PAY_COLS;
-  wsGen['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
+  wsGen['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: PAY_MERGE_LASTCOL } }];
   XLSX.utils.book_append_sheet(wb, wsGen, 'General');
 
   // ── Hoja 2: Resumen por Liga ──
-  const ligaMap: Record<string, { nombre: string; codigo: string; total: number; pagados: number }> = {};
+  const ligaMap: Record<string, { nombre: string; codigo: string; total: number; pagados: number; incompletas: number }> = {};
   for (const m of members) {
     const key = m.league_id;
-    if (!ligaMap[key]) ligaMap[key] = { nombre: m.league_name, codigo: m.league_code, total: 0, pagados: 0 };
+    if (!ligaMap[key]) ligaMap[key] = { nombre: m.league_name, codigo: m.league_code, total: 0, pagados: 0, incompletas: 0 };
     ligaMap[key].total++;
     if (m.is_paid) ligaMap[key].pagados++;
+    if (!isComplete(m, totalMatches)) ligaMap[key].incompletas++;
   }
   const ligas = Object.entries(ligaMap)
     .map(([id, l]) => ({ id, ...l }))
@@ -91,15 +110,15 @@ export async function exportPaymentList() {
   const ws2 = XLSX.utils.aoa_to_sheet([
     ['Resumen por Liga'],
     [],
-    ['Liga', 'Código', 'Total', 'Pagados', 'Pendientes', '% Pago'],
+    ['Liga', 'Código', 'Total', 'Pagados', 'Pendientes pago', 'Quiniela incompleta', '% Pago'],
     ...ligas.map(l => [
-      l.nombre, l.codigo, l.total, l.pagados, l.total - l.pagados,
+      l.nombre, l.codigo, l.total, l.pagados, l.total - l.pagados, l.incompletas,
       `${Math.round((l.pagados / l.total) * 100)}%`,
     ]),
     [],
-    ['TOTAL', '', members.length, paidCount, members.length - paidCount, `${Math.round((paidCount / members.length) * 100)}%`],
+    ['TOTAL', '', members.length, paidCount, members.length - paidCount, incompleteCount, `${Math.round((paidCount / members.length) * 100)}%`],
   ]);
-  ws2['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 8 }];
+  ws2['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 16 }, { wch: 18 }, { wch: 8 }];
   XLSX.utils.book_append_sheet(wb, ws2, 'Resumen Ligas');
 
   // ── Una hoja por liga ──
@@ -107,15 +126,16 @@ export async function exportPaymentList() {
   for (const liga of ligas) {
     const ligaMembers = members.filter(m => m.league_id === liga.id);
     const ligaPaid = ligaMembers.filter(m => m.is_paid).length;
+    const ligaIncomplete = ligaMembers.filter(m => !isComplete(m, totalMatches)).length;
     const ws = XLSX.utils.aoa_to_sheet([
       [`Liga: ${liga.nombre}  (Código: ${liga.codigo})`],
-      [`Pagados: ${ligaPaid} / ${ligaMembers.length}   |   Pendientes: ${ligaMembers.length - ligaPaid}`],
+      [`Pagados: ${ligaPaid} / ${ligaMembers.length}   |   Pendientes pago: ${ligaMembers.length - ligaPaid}   |   Quiniela incompleta: ${ligaIncomplete}`],
       [],
       PAY_HEADERS,
-      ...buildPayRows(ligaMembers, emailMap),
+      ...buildPayRows(ligaMembers, emailMap, totalMatches),
     ]);
     ws['!cols'] = PAY_COLS;
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: PAY_MERGE_LASTCOL } }];
     XLSX.utils.book_append_sheet(wb, ws, safeSheetName(liga.nombre, usedNames));
   }
 
