@@ -90,10 +90,11 @@ serve(async (req) => {
 
     const { data: existing } = await supabase
       .from('matches')
-      .select('id, api_match_id')
+      .select('id, api_match_id, status, home_score, away_score')
       .not('api_match_id', 'is', null);
 
-    const existingMap = new Map((existing ?? []).map((m: any) => [m.api_match_id, m.id]));
+    const existingMap = new Map((existing ?? []).map((m: any) => [m.api_match_id, m]));
+    const STATUS_RANK: Record<string, number> = { upcoming: 0, live: 1, finished: 2 };
 
     const toInsert: any[] = [];
     const toUpdate: { id: number; record: any }[] = [];
@@ -102,19 +103,46 @@ serve(async (req) => {
       if (!m.homeTeam?.name || !m.awayTeam?.name) continue;
       const homeName = normalizeName(m.homeTeam.name);
       const awayName = normalizeName(m.awayTeam.name);
-      const record = {
-        home_team: homeName, away_team: awayName,
-        home_flag: getFlag(homeName), away_flag: getFlag(awayName),
-        match_date: m.utcDate, stage: mapStage(m.stage),
-        group_name: m.group?.replace('GROUP_', '') ?? null,
-        venue: m.venue ?? null, status: mapStatus(m.status),
-        home_score: m.score?.fullTime?.home ?? null,
-        away_score: m.score?.fullTime?.away ?? null,
-        api_match_id: String(m.id),
-      };
-      const existingId = existingMap.get(String(m.id));
-      if (existingId) toUpdate.push({ id: existingId, record });
-      else toInsert.push(record);
+      const apiStatus = mapStatus(m.status);
+      const apiHome = m.score?.fullTime?.home ?? null;
+      const apiAway = m.score?.fullTime?.away ?? null;
+
+      const prev = existingMap.get(String(m.id));
+      if (prev) {
+        // UPDATE: nunca borrar un marcador existente ni regresar el estado.
+        // Así el admin puede capturar en vivo sin que el cron lo borre;
+        // la API toma el control cuando trae datos (en vivo o final).
+        const record: any = {
+          home_team: homeName, away_team: awayName,
+          home_flag: getFlag(homeName), away_flag: getFlag(awayName),
+          match_date: m.utcDate, stage: mapStage(m.stage),
+          group_name: m.group?.replace('GROUP_', '') ?? null,
+          venue: m.venue ?? null,
+          api_match_id: String(m.id),
+        };
+        // Marcador: solo si la API trae datos
+        if (apiHome !== null && apiAway !== null) {
+          record.home_score = apiHome;
+          record.away_score = apiAway;
+        }
+        // Estado: solo avanzar (upcoming → live → finished), nunca retroceder
+        if ((STATUS_RANK[apiStatus] ?? 0) > (STATUS_RANK[prev.status] ?? 0)) {
+          record.status = apiStatus;
+        } else if (apiStatus === prev.status) {
+          record.status = apiStatus; // sin cambio, refresca igual
+        }
+        toUpdate.push({ id: prev.id, record });
+      } else {
+        toInsert.push({
+          home_team: homeName, away_team: awayName,
+          home_flag: getFlag(homeName), away_flag: getFlag(awayName),
+          match_date: m.utcDate, stage: mapStage(m.stage),
+          group_name: m.group?.replace('GROUP_', '') ?? null,
+          venue: m.venue ?? null, status: apiStatus,
+          home_score: apiHome, away_score: apiAway,
+          api_match_id: String(m.id),
+        });
+      }
     }
 
     if (toInsert.length > 0) {
