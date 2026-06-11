@@ -427,6 +427,15 @@ export async function updateLeagueRules(leagueId: string, rules: Partial<League>
   if (error) throw error;
 }
 
+// Copia una quiniela propia (partidos + grupos + podio) a otra quiniela propia
+export async function copyMyQuiniela(sourceMemberId: string, targetMemberId: string): Promise<void> {
+  const { error } = await supabase.rpc('copy_my_quiniela', {
+    p_source: sourceMemberId,
+    p_target: targetMemberId,
+  });
+  if (error) throw error;
+}
+
 // Todas las ligas con sus datos de premio (solo admin global)
 export interface AdminLeaguePrize {
   id: string; name: string; code: string;

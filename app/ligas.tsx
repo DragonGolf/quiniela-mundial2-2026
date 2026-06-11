@@ -9,7 +9,7 @@ import { useLeague } from '@/lib/league';
 import {
   getMyLeagues, joinLeague, addLeagueEntry,
   getLeagueMembers, setLeagueMemberPaidById, renameLeagueEntry, deleteLeagueEntry,
-  updateLeaguePrize,
+  updateLeaguePrize, copyMyQuiniela,
 } from '@/lib/api';
 import { exportLeagueToExcel } from '@/lib/export';
 import { Colors } from '@/constants/Colors';
@@ -57,6 +57,12 @@ export default function LigasScreen() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null); // league id being exported
+
+  // Copiar quiniela
+  const [copySourceId, setCopySourceId] = useState<string | null>(null); // member_id origen
+  const [copyTargetId, setCopyTargetId] = useState<string | null>(null); // member_id destino pendiente de confirmar
+  const [copying, setCopying] = useState(false);
+  const [copyMsg, setCopyMsg] = useState('');
 
   // Editar premios
   const [prizeLeagueId, setPrizeLeagueId] = useState<string | null>(null); // liga abierta para editar premio
@@ -173,6 +179,20 @@ export default function LigasScreen() {
       console.error('Export error:', e);
     } finally {
       setExporting(null);
+    }
+  }
+
+  async function handleCopy(sourceId: string, targetId: string) {
+    setCopying(true);
+    setCopyMsg('');
+    try {
+      await copyMyQuiniela(sourceId, targetId);
+      setCopyMsg('✅ Quiniela copiada');
+      setTimeout(() => { setCopySourceId(null); setCopyTargetId(null); setCopyMsg(''); }, 1500);
+    } catch (e: any) {
+      setCopyMsg('❌ ' + (e?.message || 'No se pudo copiar'));
+    } finally {
+      setCopying(false);
     }
   }
 
@@ -342,6 +362,20 @@ export default function LigasScreen() {
                             >
                               <Text style={styles.renameBtnText}>{isRenaming ? '✕' : '✏️'}</Text>
                             </TouchableOpacity>
+                            {/* ⧉ Copiar a otra quiniela */}
+                            <TouchableOpacity
+                              style={styles.entryActionBtn}
+                              onPress={() => {
+                                setRenamingId(null);
+                                setDeletingId(null);
+                                setCopyTargetId(null);
+                                setCopyMsg('');
+                                setCopySourceId(copySourceId === entry.member_id ? null : entry.member_id);
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Text style={styles.renameBtnText}>{copySourceId === entry.member_id ? '✕' : '⧉'}</Text>
+                            </TouchableOpacity>
                             {/* 🗑️ Delete */}
                             <TouchableOpacity
                               style={styles.entryActionBtn}
@@ -356,6 +390,53 @@ export default function LigasScreen() {
                             </TouchableOpacity>
                             <Text style={styles.arrow}>{isActive ? '●' : '›'}</Text>
                           </TouchableOpacity>
+
+                          {/* Copy box */}
+                          {copySourceId === entry.member_id && (
+                            <View style={styles.renameBox}>
+                              <Text style={styles.addEntryLabel}>⧉ Copiar "{entry.alias}" a:</Text>
+                              {entries.filter(e => e.member_id !== entry.member_id).length === 0 ? (
+                                <Text style={styles.renameMsg}>No tienes otra quiniela. Crea o únete a otra liga primero.</Text>
+                              ) : entries.filter(e => e.member_id !== entry.member_id).map(target => (
+                                <View key={target.member_id}>
+                                  {copyTargetId === target.member_id ? (
+                                    <View style={styles.deleteBox}>
+                                      <Text style={styles.deleteWarning}>
+                                        ⚠️ Se reemplazará TODO lo que tenga{'\n'}
+                                        <Text style={{ fontWeight: '800' }}>"{target.alias}" ({target.name})</Text>
+                                      </Text>
+                                      <View style={styles.deleteBtns}>
+                                        <TouchableOpacity style={styles.deleteCancelBtn} onPress={() => setCopyTargetId(null)}>
+                                          <Text style={styles.deleteCancelText}>Cancelar</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                          style={styles.renameConfirmBtn}
+                                          onPress={() => handleCopy(entry.member_id, target.member_id)}
+                                          disabled={copying}
+                                        >
+                                          {copying
+                                            ? <ActivityIndicator color={Colors.white} size="small" />
+                                            : <Text style={styles.renameConfirmText}>Sí, copiar</Text>}
+                                        </TouchableOpacity>
+                                      </View>
+                                    </View>
+                                  ) : (
+                                    <TouchableOpacity
+                                      style={styles.copyTargetRow}
+                                      onPress={() => setCopyTargetId(target.member_id)}
+                                    >
+                                      <View style={{ flex: 1 }}>
+                                        <Text style={styles.copyTargetAlias}>🎯 {target.alias}</Text>
+                                        <Text style={styles.copyTargetLeague}>{target.name}</Text>
+                                      </View>
+                                      <Text style={{ color: Colors.gold, fontSize: 18, fontWeight: '800' }}>›</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                              ))}
+                              {copyMsg ? <Text style={styles.renameMsg}>{copyMsg}</Text> : null}
+                            </View>
+                          )}
 
                           {/* Rename box */}
                           {isRenaming && (
@@ -750,6 +831,14 @@ const styles = StyleSheet.create({
   adminMemberInfo: { flex: 1 },
   adminAlias: { fontSize: 14, fontWeight: '700', color: Colors.white },
   adminProfileName: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 1 },
+  copyTargetRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, marginTop: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  copyTargetAlias: { fontSize: 14, fontWeight: '700', color: Colors.white },
+  copyTargetLeague: { fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 },
   prizeBox: { marginHorizontal: 12, marginBottom: 8, padding: 12, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10 },
   prizeLabel: { fontSize: 13, color: Colors.white, fontWeight: '700' },
   prizeHint: { fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2, marginBottom: 6 },
