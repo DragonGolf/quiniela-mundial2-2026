@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, RefreshControl,
   ActivityIndicator, FlatList, TouchableOpacity,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
 import { getLeagueRanking } from '@/lib/api';
@@ -33,6 +33,15 @@ export default function RankingScreen() {
   }
 
   useEffect(() => { load(); }, [activeLeague]);
+
+  // Auto-refresh: al entrar a la pestaña y cada 60s mientras esté visible
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      const interval = setInterval(load, 60000);
+      return () => clearInterval(interval);
+    }, [activeLeague])
+  );
 
   const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [activeLeague]);
 

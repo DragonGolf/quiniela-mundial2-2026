@@ -3,6 +3,7 @@ import {
   View, FlatList, Text, StyleSheet, RefreshControl,
   ActivityIndicator, SectionList,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
 import { getMatches, getLeagueMatchesForMember } from '@/lib/api';
@@ -55,6 +56,15 @@ export default function MatchesScreen() {
   }
 
   useEffect(() => { load(); }, [profile, activeLeague?.member_id]);
+
+  // Auto-refresh: al entrar a la pestaña y cada 60s (marcadores en vivo y puntos)
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      const interval = setInterval(load, 60000);
+      return () => clearInterval(interval);
+    }, [profile, activeLeague?.member_id])
+  );
 
   const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [profile, activeLeague?.member_id]);
 
