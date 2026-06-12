@@ -566,7 +566,10 @@ export async function getMatchPredictionsGrouped(matchId: number): Promise<Match
   const { data, error } = await supabase.rpc('get_match_predictions', { p_match_id: matchId });
   if (error) throw error;
   const map = new Map<string, MatchPredLeague>();
+  const seen = new Set<string>(); // dedupe por member_id (el RPC puede duplicar si tengo varias quinielas)
   for (const r of (data as any[]) || []) {
+    if (seen.has(r.member_id)) continue;
+    seen.add(r.member_id);
     if (!map.has(r.league_id)) {
       map.set(r.league_id, { league_id: r.league_id, league_name: r.league_name, rows: [] });
     }
