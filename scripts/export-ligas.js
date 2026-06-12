@@ -9,12 +9,21 @@ const path = require('path');
 const SUPABASE_URL = 'https://nagbhtoajhmitbvtkxqb.supabase.co';
 const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hZ2JodG9hamhtaXRidnRreHFiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODUzNjQzMywiZXhwIjoyMDk0MTEyNDMzfQ.2iquaxJmp9ChTu_txRkrsqmFVJHx5ljw07-T0MYijTU';
 
+// Trae TODAS las filas paginando (Supabase corta en 1000 por petición)
 async function rest(pathQ) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${pathQ}`, {
-    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-  });
-  if (!res.ok) throw new Error(`${pathQ} → HTTP ${res.status}: ${await res.text()}`);
-  return res.json();
+  const PAGE = 1000;
+  const all = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const sep = pathQ.includes('?') ? '&' : '?';
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${pathQ}${sep}limit=${PAGE}&offset=${offset}`, {
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+    });
+    if (!res.ok) throw new Error(`${pathQ} → HTTP ${res.status}: ${await res.text()}`);
+    const page = await res.json();
+    all.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return all;
 }
 
 function fmtDateTime(iso) {
@@ -62,9 +71,9 @@ async function main() {
     const ids = members.map(m => m.id).join(',');
 
     const [matchPreds, groupPreds, podioPreds] = await Promise.all([
-      rest(`league_predictions?league_member_id=in.(${ids})&select=league_member_id,match_id,pred_home,pred_away,points&limit=20000`),
-      rest(`member_group_predictions?league_member_id=in.(${ids})&select=league_member_id,group_name,first_place,second_place&limit=2000`),
-      rest(`member_podium_predictions?league_member_id=in.(${ids})&select=league_member_id,champion,runner_up,third_place,top_scorer&limit=500`),
+      rest(`league_predictions?league_member_id=in.(${ids})&select=league_member_id,match_id,pred_home,pred_away,points&order=league_member_id,match_id`),
+      rest(`member_group_predictions?league_member_id=in.(${ids})&select=league_member_id,group_name,first_place,second_place&order=league_member_id,group_name`),
+      rest(`member_podium_predictions?league_member_id=in.(${ids})&select=league_member_id,champion,runner_up,third_place,top_scorer&order=league_member_id`),
     ]);
 
     const predMap = new Map();
