@@ -126,7 +126,7 @@ export default function GruposScreen() {
         ? getMemberGroupPredictions(activeLeague.member_id)
         : getGroupPredictions(profile.id),
       getGroupResults(),
-      activeLeague?.id ? getLeagueOpenUntil(activeLeague.id) : Promise.resolve(null),
+      activeLeague?.id ? getLeagueOpenUntil(activeLeague.id, activeLeague.member_id) : Promise.resolve(null),
     ]);
     setGroupTeams(teams);
     setOpenUntil(oUntil);

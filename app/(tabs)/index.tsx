@@ -50,7 +50,7 @@ export default function MatchesScreen() {
       }
       setMatches(data);
       if (activeLeague?.id) {
-        setOpenUntil(await getLeagueOpenUntil(activeLeague.id));
+        setOpenUntil(await getLeagueOpenUntil(activeLeague.id, activeLeague.member_id));
       } else {
         setOpenUntil(null);
       }

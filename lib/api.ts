@@ -427,14 +427,22 @@ export async function updateLeagueRules(leagueId: string, rules: Partial<League>
   if (error) throw error;
 }
 
-// Reapertura temporal de edición por liga (NULL = sin reapertura)
-export async function getLeagueOpenUntil(leagueId: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('leagues')
-    .select('predictions_open_until')
-    .eq('id', leagueId)
-    .single();
-  return (data as any)?.predictions_open_until ?? null;
+// Reapertura temporal de edición: por liga o por quiniela individual.
+// Devuelve el timestamp vigente más lejano (o null si no hay reapertura).
+export async function getLeagueOpenUntil(leagueId: string, memberId?: string): Promise<string | null> {
+  const [leagueRes, memberRes] = await Promise.all([
+    supabase.from('leagues').select('predictions_open_until').eq('id', leagueId).single(),
+    memberId
+      ? supabase.from('league_members').select('predictions_open_until').eq('id', memberId).single()
+      : Promise.resolve({ data: null } as any),
+  ]);
+  const candidates = [
+    (leagueRes.data as any)?.predictions_open_until,
+    (memberRes.data as any)?.predictions_open_until,
+  ].filter(Boolean) as string[];
+  if (candidates.length === 0) return null;
+  // El más lejano en el futuro
+  return candidates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 }
 
 // Copia una quiniela propia (partidos + grupos + podio) a otra quiniela propia

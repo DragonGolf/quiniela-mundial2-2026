@@ -87,7 +87,7 @@ export default function PodioScreen() {
         : getPodiumPrediction(profile.id),
       getTournamentResults(),
       getAllTeams(),
-      activeLeague?.id ? getLeagueOpenUntil(activeLeague.id) : Promise.resolve(null),
+      activeLeague?.id ? getLeagueOpenUntil(activeLeague.id, activeLeague.member_id) : Promise.resolve(null),
     ]);
     setPodium(p);
     setResults(r);
