@@ -427,6 +427,16 @@ export async function updateLeagueRules(leagueId: string, rules: Partial<League>
   if (error) throw error;
 }
 
+// Reapertura temporal de edición por liga (NULL = sin reapertura)
+export async function getLeagueOpenUntil(leagueId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('leagues')
+    .select('predictions_open_until')
+    .eq('id', leagueId)
+    .single();
+  return (data as any)?.predictions_open_until ?? null;
+}
+
 // Copia una quiniela propia (partidos + grupos + podio) a otra quiniela propia
 export async function copyMyQuiniela(sourceMemberId: string, targetMemberId: string): Promise<void> {
   const { error } = await supabase.rpc('copy_my_quiniela', {

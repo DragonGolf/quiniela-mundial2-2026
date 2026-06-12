@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getMatches, getLeagueMatchesForMember } from '@/lib/api';
+import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil } from '@/lib/api';
 import { MatchWithPrediction, Prediction } from '@/lib/types';
 import MatchCard from '@/components/MatchCard';
 import PredictionModal from '@/components/PredictionModal';
@@ -14,7 +14,7 @@ import LivePredictionsModal from '@/components/LivePredictionsModal';
 import InstallBanner from '@/components/InstallBanner';
 import EmptyState from '@/components/EmptyState';
 import { Colors } from '@/constants/Colors';
-import { isPredictionsLocked, LOCK_DATE_STR } from '@/lib/constants';
+import { isPredictionsLockedFor, LOCK_DATE_STR } from '@/lib/constants';
 
 function groupByDate(matches: MatchWithPrediction[]) {
   const groups: Record<string, MatchWithPrediction[]> = {};
@@ -36,6 +36,8 @@ export default function MatchesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<MatchWithPrediction | null>(null);
   const [liveSelected, setLiveSelected] = useState<MatchWithPrediction | null>(null);
+  // Reapertura temporal de edición para la liga activa (timestamp o null)
+  const [openUntil, setOpenUntil] = useState<string | null>(null);
 
   async function load() {
     if (!profile) return;
@@ -47,6 +49,11 @@ export default function MatchesScreen() {
         data = await getMatches(profile.id);
       }
       setMatches(data);
+      if (activeLeague?.id) {
+        setOpenUntil(await getLeagueOpenUntil(activeLeague.id));
+      } else {
+        setOpenUntil(null);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -75,7 +82,9 @@ export default function MatchesScreen() {
   }
 
   function isMatchLocked(match: MatchWithPrediction): boolean {
-    if (isPredictionsLocked()) return true; // lock global: 1h antes del Mundial
+    // Lock global (con posible reapertura temporal por liga)
+    if (isPredictionsLockedFor(openUntil)) return true;
+    // Los partidos ya iniciados o a <1h SIEMPRE quedan bloqueados
     if (match.status !== 'upcoming') return true;
     const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
     return minsUntil < 60;
@@ -107,7 +116,8 @@ export default function MatchesScreen() {
     );
   }
 
-  const locked = isPredictionsLocked();
+  const locked = isPredictionsLockedFor(openUntil);
+  const reopened = !locked && openUntil && new Date() < new Date(openUntil);
 
   return (
     <View style={styles.container}>
@@ -117,7 +127,15 @@ export default function MatchesScreen() {
           <Text style={styles.lockBannerText}>🔒 Predicciones cerradas — el Mundial ya comenzó</Text>
         </View>
       )}
-      {!locked && (
+      {reopened ? (
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningBannerText}>
+            🔓 Edición reabierta para tu liga hasta las{' '}
+            {new Date(openUntil!).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+            {' '}— solo partidos que no han iniciado
+          </Text>
+        </View>
+      ) : !locked && (
         <View style={styles.warningBanner}>
           <Text style={styles.warningBannerText}>
             ⏰ Cierre: {LOCK_DATE_STR}

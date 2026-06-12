@@ -5,13 +5,11 @@ import {
 } from 'react-native';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getGroupTeams, getGroupPredictions, saveGroupPrediction, getGroupResults, getMemberGroupPredictions, saveMemberGroupPrediction } from '@/lib/api';
+import { getGroupTeams, getGroupPredictions, saveGroupPrediction, getGroupResults, getMemberGroupPredictions, saveMemberGroupPrediction, getLeagueOpenUntil } from '@/lib/api';
 import { GroupPrediction, GroupResult } from '@/lib/types';
 import { Colors } from '@/constants/Colors';
 import FlagImage from '@/components/FlagImage';
-import { isPredictionsLocked } from '@/lib/constants';
-
-function isLocked() { return isPredictionsLocked(); }
+import { isPredictionsLockedFor } from '@/lib/constants';
 
 interface GroupEntry { team: string; flag: string; }
 type GroupState = { first: string; second: string };
@@ -117,18 +115,21 @@ export default function GruposScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const locked = isLocked();
+  const [openUntil, setOpenUntil] = useState<string | null>(null);
+  const locked = isPredictionsLockedFor(openUntil);
 
   const load = useCallback(async () => {
     if (!profile) return;
-    const [teams, preds, groupRes] = await Promise.all([
+    const [teams, preds, groupRes, oUntil] = await Promise.all([
       getGroupTeams(),
       activeLeague?.member_id
         ? getMemberGroupPredictions(activeLeague.member_id)
         : getGroupPredictions(profile.id),
       getGroupResults(),
+      activeLeague?.id ? getLeagueOpenUntil(activeLeague.id) : Promise.resolve(null),
     ]);
     setGroupTeams(teams);
+    setOpenUntil(oUntil);
 
     const selMap: Record<string, GroupState> = {};
     for (const p of preds) {

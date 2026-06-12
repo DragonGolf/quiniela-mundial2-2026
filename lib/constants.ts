@@ -21,3 +21,13 @@ export const LOCK_DATE_STR = '11 de junio de 2026, 12:00 PM (México) — 1h ant
 export function isPredictionsLocked(): boolean {
   return new Date() >= PREDICTIONS_LOCK_DATE;
 }
+
+/**
+ * Candado global considerando una reapertura temporal por liga.
+ * Si la liga tiene predictions_open_until en el futuro, se permite editar
+ * (los partidos ya iniciados siguen bloqueados por el candado por-partido).
+ */
+export function isPredictionsLockedFor(openUntil?: string | null): boolean {
+  if (openUntil && new Date() < new Date(openUntil)) return false;
+  return isPredictionsLocked();
+}
