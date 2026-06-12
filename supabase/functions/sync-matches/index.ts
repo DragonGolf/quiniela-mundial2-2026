@@ -153,8 +153,73 @@ serve(async (req) => {
       await supabase.from('matches').update(record).eq('id', id);
     }
 
+    // ── FUENTE EN VIVO: ESPN (gratuita, tiempo real) ──────────────
+    // football-data (plan gratis) actualiza horas tarde; ESPN trae el
+    // marcador minuto a minuto. ESPN solo puede AVANZAR estado/marcador.
+    let liveUpdated = 0;
+    try {
+      const espnRes = await fetch(
+        'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard'
+      );
+      if (espnRes.ok) {
+        const espn = await espnRes.json();
+        const events: any[] = espn.events ?? [];
+
+        // Mapa de partidos en BD por nombres normalizados
+        const { data: dbMatches } = await supabase
+          .from('matches')
+          .select('id, home_team, away_team, status, home_score, away_score');
+        const byNames = new Map<string, any>();
+        for (const dm of dbMatches ?? []) {
+          byNames.set(`${dm.home_team}|${dm.away_team}`, dm);
+        }
+
+        const mapEspnStatus = (s: string): string => {
+          if (/FULL_TIME|FINAL/.test(s)) return 'finished';
+          if (/IN_PROGRESS|HALFTIME|FIRST_HALF|SECOND_HALF|EXTRA|PEN/.test(s)) return 'live';
+          return 'upcoming';
+        };
+
+        for (const ev of events) {
+          const comp = ev.competitions?.[0];
+          if (!comp) continue;
+          const homeC = (comp.competitors ?? []).find((c: any) => c.homeAway === 'home');
+          const awayC = (comp.competitors ?? []).find((c: any) => c.homeAway === 'away');
+          if (!homeC?.team?.displayName || !awayC?.team?.displayName) continue;
+
+          const hName = normalizeName(homeC.team.displayName);
+          const aName = normalizeName(awayC.team.displayName);
+          const dbm = byNames.get(`${hName}|${aName}`);
+          if (!dbm) continue;
+
+          const eStatus = mapEspnStatus(ev.status?.type?.name ?? '');
+          const eHome = homeC.score != null ? parseInt(homeC.score) : null;
+          const eAway = awayC.score != null ? parseInt(awayC.score) : null;
+
+          const rec: any = {};
+          // Marcador: solo cuando el partido está en juego o terminado
+          if (eStatus !== 'upcoming' && eHome !== null && eAway !== null && !isNaN(eHome) && !isNaN(eAway)) {
+            if (eHome !== dbm.home_score || eAway !== dbm.away_score) {
+              rec.home_score = eHome;
+              rec.away_score = eAway;
+            }
+          }
+          // Estado: solo avanzar, nunca retroceder
+          if ((STATUS_RANK[eStatus] ?? 0) > (STATUS_RANK[dbm.status] ?? 0)) {
+            rec.status = eStatus;
+          }
+          if (Object.keys(rec).length > 0) {
+            await supabase.from('matches').update(rec).eq('id', dbm.id);
+            liveUpdated++;
+          }
+        }
+      }
+    } catch (_espnErr) {
+      // ESPN es mejora opcional: si falla, el sync base ya corrió bien
+    }
+
     return new Response(
-      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length }),
+      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length, live: liveUpdated }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {
