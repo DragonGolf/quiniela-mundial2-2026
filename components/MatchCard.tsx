@@ -98,6 +98,11 @@ export default function MatchCard({ match, onPress, onViewPredictions }: Props) 
         </View>
       </View>
 
+      {/* Venue */}
+      {match.venue ? (
+        <Text style={styles.venue} numberOfLines={1}>📍 {match.venue}</Text>
+      ) : null}
+
       {/* Prediction row */}
       <View style={styles.predictionRow}>
         {hasPrediction ? (
@@ -158,7 +163,8 @@ const styles = StyleSheet.create({
   },
   viewBtnText: { fontSize: 11, fontWeight: '700', color: Colors.white },
   badgeTextLive: { color: Colors.live },
-  teamsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  teamsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  venue: { fontSize: 10, color: Colors.textSecondary, textAlign: 'center', marginBottom: 8 },
   team: { flex: 1, alignItems: 'center', gap: 4 },
   teamRight: { alignItems: 'center' },
   flag: { fontSize: 28 },

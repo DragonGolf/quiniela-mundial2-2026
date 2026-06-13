@@ -143,6 +143,9 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
               <Text style={styles.teamName} numberOfLines={1}>{match.away_team}</Text>
             </View>
           </View>
+          {match.venue ? (
+            <Text style={styles.venueText} numberOfLines={1}>📍 {match.venue}</Text>
+          ) : null}
         </View>
 
         {/* Mi predicción */}
@@ -264,6 +267,7 @@ const styles = StyleSheet.create({
   scoreNums: { fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: 1 },
   scoreDash: { color: 'rgba(255,255,255,0.5)' },
   scoreLabel: { fontSize: 11, color: Colors.gold, fontWeight: '700', marginTop: 2 },
+  venueText: { fontSize: 11, color: 'rgba(255,255,255,0.65)', textAlign: 'center', marginTop: 8 },
   myBand: { backgroundColor: '#16314e', paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   myLbl: { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   myPred: { fontSize: 14, color: '#fff', fontWeight: '800', marginTop: 2 },

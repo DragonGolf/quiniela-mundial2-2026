@@ -10,7 +10,7 @@ const NAME_NORMALIZE: Record<string, string> = {
   'Marruecos': 'Morocco', 'Bosnia-Herzegovina': 'Bosnia and Herzegovina',
   'Congo DR': 'DR Congo', 'Czechia': 'Czech Republic', 'Curaçao': 'Curacao',
   'Korea Republic': 'South Korea', 'IR Iran': 'Iran', 'USA': 'United States',
-  'Cape Verde Islands': 'Cape Verde',
+  'Cape Verde Islands': 'Cape Verde', 'Türkiye': 'Turkey',
 };
 
 const FLAG_MAP: Record<string, string> = {
@@ -117,9 +117,10 @@ serve(async (req) => {
           home_flag: getFlag(homeName), away_flag: getFlag(awayName),
           match_date: m.utcDate, stage: mapStage(m.stage),
           group_name: m.group?.replace('GROUP_', '') ?? null,
-          venue: m.venue ?? null,
           api_match_id: String(m.id),
         };
+        // Venue: solo si la API lo trae (no borrar el que pusimos desde ESPN)
+        if (m.venue) record.venue = m.venue;
         // Marcador: solo si la API trae datos
         if (apiHome !== null && apiAway !== null) {
           record.home_score = apiHome;
@@ -168,7 +169,7 @@ serve(async (req) => {
         // Mapa de partidos en BD por nombres normalizados
         const { data: dbMatches } = await supabase
           .from('matches')
-          .select('id, home_team, away_team, status, home_score, away_score');
+          .select('id, home_team, away_team, status, home_score, away_score, venue');
         const byNames = new Map<string, any>();
         for (const dm of dbMatches ?? []) {
           byNames.set(`${dm.home_team}|${dm.away_team}`, dm);
@@ -207,6 +208,13 @@ serve(async (req) => {
           // Estado: solo avanzar, nunca retroceder
           if ((STATUS_RANK[eStatus] ?? 0) > (STATUS_RANK[dbm.status] ?? 0)) {
             rec.status = eStatus;
+          }
+          // Sede (estadio — ciudad): ESPN sí la trae
+          const v = comp.venue;
+          if (v?.fullName) {
+            const city = v.address?.city ? `${v.address.city}${v.address.country ? ', ' + v.address.country : ''}` : '';
+            const venueStr = v.fullName + (city ? ' — ' + city : '');
+            if (venueStr !== dbm.venue) rec.venue = venueStr;
           }
           if (Object.keys(rec).length > 0) {
             await supabase.from('matches').update(rec).eq('id', dbm.id);
