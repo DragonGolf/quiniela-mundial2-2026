@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil } from '@/lib/api';
+import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart } from '@/lib/api';
 import { MatchWithPrediction, Prediction } from '@/lib/types';
 import MatchCard from '@/components/MatchCard';
 import PredictionModal from '@/components/PredictionModal';
@@ -38,6 +38,8 @@ export default function MatchesScreen() {
   const [liveSelected, setLiveSelected] = useState<MatchWithPrediction | null>(null);
   // Reapertura temporal de edición para la liga activa (timestamp o null)
   const [openUntil, setOpenUntil] = useState<string | null>(null);
+  // Fecha de arranque de la liga (los partidos previos no cuentan)
+  const [seasonStart, setSeasonStart] = useState<string | null>(null);
 
   async function load() {
     if (!profile) return;
@@ -50,9 +52,15 @@ export default function MatchesScreen() {
       }
       setMatches(data);
       if (activeLeague?.id) {
-        setOpenUntil(await getLeagueOpenUntil(activeLeague.id, activeLeague.member_id));
+        const [ou, ss] = await Promise.all([
+          getLeagueOpenUntil(activeLeague.id, activeLeague.member_id),
+          getLeagueSeasonStart(activeLeague.id),
+        ]);
+        setOpenUntil(ou);
+        setSeasonStart(ss);
       } else {
         setOpenUntil(null);
+        setSeasonStart(null);
       }
     } catch (e) {
       console.error(e);
@@ -81,7 +89,14 @@ export default function MatchesScreen() {
     );
   }
 
+  // ¿El partido es anterior al arranque de la liga? (no cuenta para esta liga)
+  function isBeforeSeason(match: MatchWithPrediction): boolean {
+    return !!seasonStart && new Date(match.match_date) < new Date(seasonStart);
+  }
+
   function isMatchLocked(match: MatchWithPrediction): boolean {
+    // Partido anterior al arranque de la liga: bloqueado (no cuenta)
+    if (isBeforeSeason(match)) return true;
     // Lock global (con posible reapertura temporal por liga)
     if (isPredictionsLockedFor(openUntil)) return true;
     // Los partidos ya iniciados o a <1h SIEMPRE quedan bloqueados
@@ -118,10 +133,21 @@ export default function MatchesScreen() {
 
   const locked = isPredictionsLockedFor(openUntil);
   const reopened = !locked && openUntil && new Date() < new Date(openUntil);
+  const seasonStartFuture = seasonStart && new Date() < new Date(seasonStart);
+  const seasonStartLabel = seasonStart
+    ? new Date(seasonStart).toLocaleString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+    : '';
 
   return (
     <View style={styles.container}>
       <InstallBanner />
+      {seasonStartFuture && (
+        <View style={styles.seasonBanner}>
+          <Text style={styles.seasonBannerText}>
+            🏁 Tu liga arranca el {seasonStartLabel}. Solo cuentan los partidos desde entonces — los anteriores aparecen bloqueados.
+          </Text>
+        </View>
+      )}
       {locked && (
         <View style={styles.lockBanner}>
           <Text style={styles.lockBannerText}>🔒 Predicciones cerradas — el Mundial ya comenzó</Text>
@@ -161,6 +187,7 @@ export default function MatchesScreen() {
             // Botón "👁 Ver" solo para admin (puede revisar antes del cierre).
             // Los usuarios normales ven las predicciones al tocar un partido ya cerrado.
             onViewPredictions={profile?.is_admin ? () => setLiveSelected(item) : undefined}
+            notInLeague={isBeforeSeason(item)}
           />
         )}
         renderSectionHeader={({ section }) => (
@@ -212,6 +239,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#ffe0b2',
   },
   warningBannerText: { color: '#e65100', fontSize: 12, fontWeight: '600' },
+  seasonBanner: {
+    backgroundColor: '#e3f2fd', paddingVertical: 8, paddingHorizontal: 16,
+    borderBottomWidth: 1, borderBottomColor: '#bbdefb',
+  },
+  seasonBannerText: { color: '#0d47a1', fontSize: 12, fontWeight: '600', textAlign: 'center', lineHeight: 16 },
   paidBanner: {
     backgroundColor: '#e8f5e9', paddingVertical: 7, paddingHorizontal: 16,
     alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#c8e6c9',

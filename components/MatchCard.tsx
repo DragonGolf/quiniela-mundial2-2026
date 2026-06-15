@@ -8,6 +8,7 @@ interface Props {
   match: MatchWithPrediction;
   onPress: () => void;
   onViewPredictions?: () => void;
+  notInLeague?: boolean; // partido anterior al arranque de la liga (no cuenta)
 }
 
 function getCardBg(match: MatchWithPrediction): string {
@@ -27,7 +28,7 @@ function isWithin1Hour(match: MatchWithPrediction): boolean {
   return minsUntil < 60;
 }
 
-export default function MatchCard({ match, onPress, onViewPredictions }: Props) {
+export default function MatchCard({ match, onPress, onViewPredictions, notInLeague }: Props) {
   const isUpcoming = match.status === 'upcoming';
   const isLive = match.status === 'live';
   const isFinished = match.status === 'finished';
@@ -105,7 +106,9 @@ export default function MatchCard({ match, onPress, onViewPredictions }: Props) 
 
       {/* Prediction row */}
       <View style={styles.predictionRow}>
-        {hasPrediction ? (
+        {notInLeague ? (
+          <Text style={styles.notInLeague}>🏁 No cuenta para tu liga (anterior al arranque)</Text>
+        ) : hasPrediction ? (
           <>
             <Text style={styles.predLabel}>
               Mi predicción: {match.my_prediction!.pred_home} - {match.my_prediction!.pred_away}
@@ -180,6 +183,7 @@ const styles = StyleSheet.create({
   predLabel: { fontSize: 13, color: Colors.textSecondary },
   noPrediction: { fontSize: 13, color: Colors.primary, fontStyle: 'italic' },
   lockedLabel: { fontSize: 12, color: Colors.textSecondary, fontStyle: 'italic' },
+  notInLeague: { fontSize: 12, color: '#0d47a1', fontStyle: 'italic', fontWeight: '600' },
   pointsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   pointsExact: { backgroundColor: '#e8f8ee' },
   pointsCorrect: { backgroundColor: '#fef9e7' },

@@ -445,6 +445,17 @@ export async function getLeagueOpenUntil(leagueId: string, memberId?: string): P
   return candidates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 }
 
+// Fecha de arranque de una liga (NULL = arrancó con el Mundial).
+// Los partidos antes de esta fecha no cuentan ni se pueden editar en esa liga.
+export async function getLeagueSeasonStart(leagueId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('leagues')
+    .select('season_start')
+    .eq('id', leagueId)
+    .single();
+  return (data as any)?.season_start ?? null;
+}
+
 // Copia una quiniela propia (partidos + grupos + podio) a otra quiniela propia
 export async function copyMyQuiniela(sourceMemberId: string, targetMemberId: string): Promise<void> {
   const { error } = await supabase.rpc('copy_my_quiniela', {
