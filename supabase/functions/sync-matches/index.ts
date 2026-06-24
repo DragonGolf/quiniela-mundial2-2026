@@ -226,8 +226,59 @@ serve(async (req) => {
       // ESPN es mejora opcional: si falla, el sync base ya corrió bien
     }
 
+    // ── RESULTADOS DE GRUPO: cuando un grupo termina (6/6), llenar 1° y 2° desde ESPN ──
+    let groupsFilled = 0;
+    try {
+      // Grupos cuyos partidos están TODOS finalizados
+      const { data: gMatches } = await supabase
+        .from('matches')
+        .select('group_name, status')
+        .eq('stage', 'group')
+        .not('group_name', 'is', null);
+      const byGroup: Record<string, { tot: number; fin: number }> = {};
+      for (const m of gMatches ?? []) {
+        const g = (byGroup[m.group_name] ??= { tot: 0, fin: 0 });
+        g.tot++;
+        if (m.status === 'finished') g.fin++;
+      }
+      const completeGroups = Object.keys(byGroup).filter((g) => byGroup[g].tot > 0 && byGroup[g].fin === byGroup[g].tot);
+
+      if (completeGroups.length > 0) {
+        const stRes = await fetch('https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings');
+        if (stRes.ok) {
+          const st = await stRes.json();
+          const standings: Record<string, { team: string; rank: number }[]> = {};
+          for (const ch of st.children ?? []) {
+            const letter = String(ch.name ?? '').replace('Group ', '').trim();
+            const ranked = (ch.standings?.entries ?? [])
+              .map((e: any) => ({
+                team: normalizeName(e.team?.displayName ?? ''),
+                rank: Number((e.stats ?? []).find((s: any) => s.name === 'rank')?.value ?? 99),
+              }))
+              .sort((a: any, b: any) => a.rank - b.rank);
+            standings[letter] = ranked;
+          }
+          // ¿Ya están guardados?
+          const { data: existingGr } = await supabase.from('group_results').select('group_name');
+          const have = new Set((existingGr ?? []).map((r: any) => r.group_name));
+
+          for (const g of completeGroups) {
+            if (have.has(g)) continue; // ya cargado
+            const r = standings[g];
+            if (!r || r.length < 2 || !r[0].team || !r[1].team) continue;
+            await supabase.from('group_results').upsert({
+              group_name: g, first_place: r[0].team, second_place: r[1].team, updated_at: new Date().toISOString(),
+            });
+            groupsFilled++;
+          }
+        }
+      }
+    } catch (_grErr) {
+      // opcional: si falla, el admin puede llenar manualmente
+    }
+
     return new Response(
-      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length, live: liveUpdated }),
+      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length, live: liveUpdated, groups: groupsFilled }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {

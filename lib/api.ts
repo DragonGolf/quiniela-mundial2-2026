@@ -264,9 +264,12 @@ export async function saveGroupResult(
   firstPlace: string | null,
   secondPlace: string | null
 ): Promise<void> {
-  const { error } = await supabase
-    .from('group_results')
-    .upsert({ group_name: groupName, first_place: firstPlace, second_place: secondPlace, updated_at: new Date().toISOString() });
+  // RPC SECURITY DEFINER para bypassear RLS al guardar resultados de grupo
+  const { error } = await supabase.rpc('admin_save_group_result', {
+    p_group: groupName,
+    p_first: firstPlace,
+    p_second: secondPlace,
+  });
   if (error) throw error;
 }
 
