@@ -29,6 +29,16 @@ function GroupCard({ groupName, teams, selection, savedSelection, result, locked
     savedSelection.first === selection.first &&
     savedSelection.second === selection.second;
 
+  // Puntos ganados en este grupo (4 por cada equipo acertado en el top-2)
+  const hasResult = !!result?.first_place;
+  const realTop2All = [result?.first_place, result?.second_place];
+  const pred = savedSelection ?? selection;
+  let groupPts = 0;
+  if (hasResult) {
+    if (pred.first && realTop2All.includes(pred.first)) groupPts += 4;
+    if (pred.second && realTop2All.includes(pred.second)) groupPts += 4;
+  }
+
   function tap(team: string) {
     if (locked) return;
     let { first, second } = selection;
@@ -52,8 +62,13 @@ function GroupCard({ groupName, teams, selection, savedSelection, result, locked
       <View style={styles.groupHeader}>
         <Text style={styles.groupTitle}>Grupo {groupName}</Text>
         <View style={styles.groupStatus}>
-          {result?.first_place ? (
-            <Text style={styles.resultReady}>✓ Resultado oficial</Text>
+          {hasResult ? (
+            <View style={[styles.groupPtsBadge,
+              groupPts >= 8 ? styles.ptsGreen : groupPts >= 4 ? styles.ptsYellow : styles.ptsRed]}>
+              <Text style={styles.groupPtsText}>
+                {groupPts > 0 ? `🏆 +${groupPts} pts` : '0 pts'}
+              </Text>
+            </View>
           ) : isSaved ? (
             <Text style={styles.savedLabel}>✓ Guardado</Text>
           ) : selection.first && selection.second ? (
@@ -96,9 +111,12 @@ function GroupCard({ groupName, teams, selection, savedSelection, result, locked
         );
       })}
 
-      {result?.first_place && (
+      {hasResult && (
         <View style={styles.resultRow}>
-          <Text style={styles.resultLabel}>Resultado real: 🥇 {result.first_place}  🥈 {result.second_place}</Text>
+          <Text style={styles.resultLabel}>Resultado real: 🥇 {result!.first_place}  🥈 {result!.second_place}</Text>
+          <Text style={styles.resultPts}>
+            Ganaste <Text style={{ fontWeight: '800' }}>{groupPts} de 8 pts</Text> en este grupo
+          </Text>
         </View>
       )}
     </View>
@@ -285,6 +303,11 @@ const styles = StyleSheet.create({
   savedLabel: { fontSize: 12, color: Colors.green, fontWeight: '600' },
   pendingLabel: { fontSize: 12, color: Colors.gold, fontWeight: '600' },
   resultReady: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
+  groupPtsBadge: { borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3 },
+  ptsGreen: { backgroundColor: '#d6f5e0' },
+  ptsYellow: { backgroundColor: '#fdeccd' },
+  ptsRed: { backgroundColor: '#fde2e6' },
+  groupPtsText: { fontSize: 12, fontWeight: '800', color: Colors.text },
   teamRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -310,6 +333,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f2f5',
   },
   resultLabel: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
+  resultPts: { fontSize: 13, color: Colors.text, marginTop: 3 },
   bottomSpace: { height: 20 },
   saveBar: {
     position: 'absolute',
