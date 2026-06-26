@@ -448,14 +448,31 @@ export async function getLeagueOpenUntil(leagueId: string, memberId?: string): P
   return candidates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 }
 
-// ¿La liga es de fase eliminatoria? (pick-em por partido, sin cierre global)
-export async function getLeagueIsKnockout(leagueId: string): Promise<boolean> {
+// Config de eliminatoria de una liga
+export interface KnockoutCfg { isKnockout: boolean; knockoutOnly: boolean; }
+export async function getLeagueKnockoutCfg(leagueId: string): Promise<KnockoutCfg> {
   const { data } = await supabase
     .from('leagues')
-    .select('is_knockout')
+    .select('is_knockout, knockout_only')
     .eq('id', leagueId)
     .single();
-  return (data as any)?.is_knockout === true;
+  return {
+    isKnockout: (data as any)?.is_knockout === true,
+    knockoutOnly: (data as any)?.knockout_only === true,
+  };
+}
+
+// Multiplicadores por ronda (config global, editable por admin)
+export interface KnockoutMultiplier { stage: string; multiplier: number; }
+export async function getKnockoutMultipliers(): Promise<KnockoutMultiplier[]> {
+  const { data } = await supabase.from('knockout_multipliers').select('stage, multiplier');
+  return ((data as any[]) || []).map((m) => ({ stage: m.stage, multiplier: Number(m.multiplier) }));
+}
+export async function setKnockoutMultiplier(stage: string, multiplier: number): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_knockout_multiplier', {
+    p_stage: stage, p_multiplier: multiplier,
+  });
+  if (error) throw error;
 }
 
 // Fecha de arranque de una liga (NULL = arrancó con el Mundial).

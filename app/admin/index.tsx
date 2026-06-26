@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { triggerMatchSync, adminUpdateMatch, adminClearMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues, getAdminLeagues, updateLeaguePrize, AdminLeaguePrize } from '@/lib/api';
+import { triggerMatchSync, adminUpdateMatch, adminClearMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues, getAdminLeagues, updateLeaguePrize, AdminLeaguePrize, getKnockoutMultipliers, setKnockoutMultiplier, KnockoutMultiplier } from '@/lib/api';
 import { exportPaymentList } from '@/lib/export';
 import { GroupResult, LeagueMember } from '@/lib/types';
 import { TournamentResult, Match } from '@/lib/types';
@@ -68,6 +68,11 @@ export default function AdminScreen() {
   const [movingId, setMovingId] = useState<string | null>(null);
   // Ligas colapsadas (por leagueId) en la sección de pagos
   const [collapsedLeagues, setCollapsedLeagues] = useState<Record<string, boolean>>({});
+  // Multiplicadores de eliminatoria
+  const [koMults, setKoMults] = useState<KnockoutMultiplier[]>([]);
+  const [koDraft, setKoDraft] = useState<Record<string, string>>({});
+  const [savingKo, setSavingKo] = useState(false);
+  const [koMsg, setKoMsg] = useState('');
   // Premios por liga (admin global)
   const [adminLeaguesList, setAdminLeaguesList] = useState<AdminLeaguePrize[]>([]);
   const [prizeEditId, setPrizeEditId] = useState<string | null>(null);
@@ -169,8 +174,38 @@ export default function AdminScreen() {
       console.error('getAdminLeagues error:', e);
     }
 
+    // Multiplicadores de eliminatoria
+    try {
+      const mults = await getKnockoutMultipliers();
+      setKoMults(mults);
+      const draft: Record<string, string> = {};
+      for (const m of mults) draft[m.stage] = String(m.multiplier);
+      setKoDraft(draft);
+    } catch (e) {
+      console.error('getKnockoutMultipliers error:', e);
+    }
+
     setLoading(false);
     setRefreshing(false);
+  }
+
+  async function handleSaveKoMults() {
+    setSavingKo(true);
+    setKoMsg('');
+    try {
+      for (const m of koMults) {
+        const v = parseFloat(koDraft[m.stage]);
+        if (!isNaN(v) && v !== m.multiplier) await setKnockoutMultiplier(m.stage, v);
+      }
+      const mults = await getKnockoutMultipliers();
+      setKoMults(mults);
+      setKoMsg('✅ Multiplicadores guardados');
+      setTimeout(() => setKoMsg(''), 2500);
+    } catch (e: any) {
+      setKoMsg('❌ ' + (e?.message || 'Error'));
+    } finally {
+      setSavingKo(false);
+    }
   }
 
   function openPrizeEdit(l: AdminLeaguePrize) {
@@ -527,6 +562,40 @@ export default function AdminScreen() {
         })()}
       </View>
 
+      {/* Multiplicadores de eliminatoria */}
+      {koMults.length > 0 && (
+        <View style={styles.trSection}>
+          <Text style={styles.trTitle}>🏆 Puntos de Eliminatoria (multiplicadores)</Text>
+          <Text style={styles.trHint}>Cuánto se multiplican los puntos base (máx 7) en cada ronda de las ligas de eliminatoria.</Text>
+          {(['round_of_32', 'round_of_16', 'quarterfinal', 'semifinal', 'final', 'third_place'] as const).map((stage) => {
+            const labels: Record<string, string> = {
+              round_of_32: 'Ronda de 32', round_of_16: 'Octavos', quarterfinal: 'Cuartos',
+              semifinal: 'Semifinal', final: 'Final', third_place: '3er lugar',
+            };
+            if (!koMults.find((m) => m.stage === stage)) return null;
+            return (
+              <View key={stage} style={styles.koRow}>
+                <Text style={styles.koLabel}>{labels[stage]}</Text>
+                <Text style={styles.koX}>×</Text>
+                <TextInput
+                  style={styles.koInput}
+                  value={koDraft[stage] ?? ''}
+                  onChangeText={(t) => setKoDraft((p) => ({ ...p, [stage]: t }))}
+                  keyboardType="numeric"
+                  placeholder="1"
+                  placeholderTextColor={Colors.textSecondary}
+                />
+                <Text style={styles.koMax}>máx {Math.round(7 * (parseFloat(koDraft[stage]) || 0))} pts</Text>
+              </View>
+            );
+          })}
+          {koMsg ? <Text style={[styles.paidMsg, { color: koMsg.startsWith('✅') ? '#2e7d32' : Colors.accent }]}>{koMsg}</Text> : null}
+          <TouchableOpacity style={styles.trSaveBtn} onPress={handleSaveKoMults} disabled={savingKo}>
+            {savingKo ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.trSaveBtnText}>Guardar multiplicadores</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Premios por liga */}
       <View style={styles.trSection}>
         <Text style={styles.trTitle}>💰 Premios por liga</Text>
@@ -848,6 +917,14 @@ const styles = StyleSheet.create({
   entryExpandHint: { fontSize: 11, color: Colors.textSecondary },
   entryEmail: { fontSize: 12, color: Colors.primary, marginBottom: 3, fontStyle: 'italic' },
   entryActions: { alignItems: 'flex-end', gap: 6 },
+  koRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  koLabel: { fontSize: 14, fontWeight: '600', color: Colors.text, width: 110 },
+  koX: { fontSize: 16, color: Colors.textSecondary, fontWeight: '700' },
+  koInput: {
+    width: 60, height: 40, borderRadius: 8, borderWidth: 1.5, borderColor: Colors.border,
+    paddingHorizontal: 10, fontSize: 15, color: Colors.text, backgroundColor: Colors.background, textAlign: 'center',
+  },
+  koMax: { fontSize: 12, color: Colors.textSecondary, flex: 1 },
   pzLeague: { borderWidth: 1, borderColor: Colors.border, borderRadius: 10, marginBottom: 8, overflow: 'hidden' },
   pzHead: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: Colors.background },
   pzName: { fontSize: 14, fontWeight: '700', color: Colors.text },

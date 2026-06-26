@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart, getLeagueIsKnockout } from '@/lib/api';
+import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart, getLeagueKnockoutCfg } from '@/lib/api';
 import { MatchWithPrediction, Prediction } from '@/lib/types';
 import MatchCard from '@/components/MatchCard';
 import PredictionModal from '@/components/PredictionModal';
@@ -42,6 +42,7 @@ export default function MatchesScreen() {
   const [seasonStart, setSeasonStart] = useState<string | null>(null);
   // Liga de fase eliminatoria (pick-em por partido)
   const [isKnockout, setIsKnockout] = useState(false);
+  const [knockoutOnly, setKnockoutOnly] = useState(false);
 
   async function load() {
     if (!profile) return;
@@ -53,20 +54,22 @@ export default function MatchesScreen() {
         data = await getMatches(profile.id);
       }
       if (activeLeague?.id) {
-        const [ou, ss, ko] = await Promise.all([
+        const [ou, ss, cfg] = await Promise.all([
           getLeagueOpenUntil(activeLeague.id, activeLeague.member_id),
           getLeagueSeasonStart(activeLeague.id),
-          getLeagueIsKnockout(activeLeague.id),
+          getLeagueKnockoutCfg(activeLeague.id),
         ]);
         setOpenUntil(ou);
         setSeasonStart(ss);
-        setIsKnockout(ko);
-        // Liga de eliminatoria: mostrar solo partidos de eliminatoria
-        if (ko) data = data.filter((m) => m.stage !== 'group');
+        setIsKnockout(cfg.isKnockout);
+        setKnockoutOnly(cfg.knockoutOnly);
+        // Liga "solo eliminatoria": ocultar partidos de grupo
+        if (cfg.knockoutOnly) data = data.filter((m) => m.stage !== 'group');
       } else {
         setOpenUntil(null);
         setSeasonStart(null);
         setIsKnockout(false);
+        setKnockoutOnly(false);
       }
       setMatches(data);
     } catch (e) {
@@ -104,9 +107,11 @@ export default function MatchesScreen() {
   function isMatchLocked(match: MatchWithPrediction): boolean {
     // Partido anterior al arranque de la liga: bloqueado (no cuenta)
     if (isBeforeSeason(match)) return true;
-    // Lock global SOLO para ligas normales. En eliminatoria (pick-em) cada
-    // partido se predice hasta 1h antes, sin cierre global.
-    if (!isKnockout && isPredictionsLockedFor(openUntil)) return true;
+    // Pick-em: en liga de eliminatoria, los partidos de eliminatoria se
+    // predicen hasta 1h antes (sin cierre global). Los de grupo sí respetan
+    // el cierre global (ya cerraron).
+    const isKoMatch = match.stage !== 'group';
+    if (!(isKnockout && isKoMatch) && isPredictionsLockedFor(openUntil)) return true;
     // Los partidos ya iniciados o a <1h SIEMPRE quedan bloqueados
     if (match.status !== 'upcoming') return true;
     const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;

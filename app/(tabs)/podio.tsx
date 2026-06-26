@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getPodiumPrediction, savePodiumPrediction, getMemberPodiumPrediction, saveMemberPodiumPrediction, getTournamentResults, getAllTeams, getLeagueOpenUntil } from '@/lib/api';
+import { getPodiumPrediction, savePodiumPrediction, getMemberPodiumPrediction, saveMemberPodiumPrediction, getTournamentResults, getAllTeams, getLeagueOpenUntil, getLeagueKnockoutCfg } from '@/lib/api';
 import { PodiumPrediction, TournamentResult } from '@/lib/types';
 import { Colors } from '@/constants/Colors';
 import { isPredictionsLockedFor } from '@/lib/constants';
@@ -77,22 +77,26 @@ export default function PodioScreen() {
   const [saveMsg, setSaveMsg] = useState('');
   const [picker, setPicker] = useState<'champion' | 'runner_up' | 'third_place' | null>(null);
   const [openUntil, setOpenUntil] = useState<string | null>(null);
-  const locked = isPredictionsLockedFor(openUntil);
+  const [isKnockout, setIsKnockout] = useState(false);
+  // En ligas de eliminatoria el podio/campeón sigue abierto (no aplica el cierre global)
+  const locked = isKnockout ? false : isPredictionsLockedFor(openUntil);
 
   const load = useCallback(async () => {
     if (!profile) return;
-    const [p, r, t, oUntil] = await Promise.all([
+    const [p, r, t, oUntil, cfg] = await Promise.all([
       activeLeague?.member_id
         ? getMemberPodiumPrediction(activeLeague.member_id)
         : getPodiumPrediction(profile.id),
       getTournamentResults(),
       getAllTeams(),
       activeLeague?.id ? getLeagueOpenUntil(activeLeague.id, activeLeague.member_id) : Promise.resolve(null),
+      activeLeague?.id ? getLeagueKnockoutCfg(activeLeague.id) : Promise.resolve({ isKnockout: false, knockoutOnly: false }),
     ]);
     setPodium(p);
     setResults(r);
     setTeams(t);
     setOpenUntil(oUntil);
+    setIsKnockout(cfg.isKnockout);
     if (p) {
       setChampion(p.champion);
       setRunnerUp(p.runner_up);
