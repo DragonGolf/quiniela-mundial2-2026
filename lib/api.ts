@@ -448,6 +448,16 @@ export async function getLeagueOpenUntil(leagueId: string, memberId?: string): P
   return candidates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 }
 
+// ¿La liga es de fase eliminatoria? (pick-em por partido, sin cierre global)
+export async function getLeagueIsKnockout(leagueId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('leagues')
+    .select('is_knockout')
+    .eq('id', leagueId)
+    .single();
+  return (data as any)?.is_knockout === true;
+}
+
 // Fecha de arranque de una liga (NULL = arrancó con el Mundial).
 // Los partidos antes de esta fecha no cuentan ni se pueden editar en esa liga.
 export async function getLeagueSeasonStart(leagueId: string): Promise<string | null> {

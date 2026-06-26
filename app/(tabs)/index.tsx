@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart } from '@/lib/api';
+import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart, getLeagueIsKnockout } from '@/lib/api';
 import { MatchWithPrediction, Prediction } from '@/lib/types';
 import MatchCard from '@/components/MatchCard';
 import PredictionModal from '@/components/PredictionModal';
@@ -40,6 +40,8 @@ export default function MatchesScreen() {
   const [openUntil, setOpenUntil] = useState<string | null>(null);
   // Fecha de arranque de la liga (los partidos previos no cuentan)
   const [seasonStart, setSeasonStart] = useState<string | null>(null);
+  // Liga de fase eliminatoria (pick-em por partido)
+  const [isKnockout, setIsKnockout] = useState(false);
 
   async function load() {
     if (!profile) return;
@@ -50,18 +52,23 @@ export default function MatchesScreen() {
       } else {
         data = await getMatches(profile.id);
       }
-      setMatches(data);
       if (activeLeague?.id) {
-        const [ou, ss] = await Promise.all([
+        const [ou, ss, ko] = await Promise.all([
           getLeagueOpenUntil(activeLeague.id, activeLeague.member_id),
           getLeagueSeasonStart(activeLeague.id),
+          getLeagueIsKnockout(activeLeague.id),
         ]);
         setOpenUntil(ou);
         setSeasonStart(ss);
+        setIsKnockout(ko);
+        // Liga de eliminatoria: mostrar solo partidos de eliminatoria
+        if (ko) data = data.filter((m) => m.stage !== 'group');
       } else {
         setOpenUntil(null);
         setSeasonStart(null);
+        setIsKnockout(false);
       }
+      setMatches(data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -97,8 +104,9 @@ export default function MatchesScreen() {
   function isMatchLocked(match: MatchWithPrediction): boolean {
     // Partido anterior al arranque de la liga: bloqueado (no cuenta)
     if (isBeforeSeason(match)) return true;
-    // Lock global (con posible reapertura temporal por liga)
-    if (isPredictionsLockedFor(openUntil)) return true;
+    // Lock global SOLO para ligas normales. En eliminatoria (pick-em) cada
+    // partido se predice hasta 1h antes, sin cierre global.
+    if (!isKnockout && isPredictionsLockedFor(openUntil)) return true;
     // Los partidos ya iniciados o a <1h SIEMPRE quedan bloqueados
     if (match.status !== 'upcoming') return true;
     const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
@@ -141,6 +149,13 @@ export default function MatchesScreen() {
   return (
     <View style={styles.container}>
       <InstallBanner />
+      {isKnockout && (
+        <View style={styles.koBanner}>
+          <Text style={styles.koBannerText}>
+            🏆 Fase Eliminatoria · Predice cada partido hasta 1h antes. Entre más avanza la ronda, más valen los puntos (Octavos ×2, Cuartos ×3, Semis ×4, Final ×5).
+          </Text>
+        </View>
+      )}
       {seasonStartFuture && (
         <View style={styles.seasonBanner}>
           <Text style={styles.seasonBannerText}>
@@ -244,6 +259,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#bbdefb',
   },
   seasonBannerText: { color: '#0d47a1', fontSize: 12, fontWeight: '600', textAlign: 'center', lineHeight: 16 },
+  koBanner: { backgroundColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 16 },
+  koBannerText: { color: Colors.white, fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 16 },
   paidBanner: {
     backgroundColor: '#e8f5e9', paddingVertical: 7, paddingHorizontal: 16,
     alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#c8e6c9',
