@@ -170,7 +170,8 @@ export default function MatchesScreen() {
     );
   }
 
-  const locked = isPredictionsLockedFor(openUntil);
+  // En liga de eliminatoria NO hay cierre global (pick-em por partido)
+  const locked = isKnockout ? false : isPredictionsLockedFor(openUntil);
   const reopened = !locked && openUntil && new Date() < new Date(openUntil);
   const seasonStartFuture = seasonStart && new Date() < new Date(seasonStart);
   const seasonStartLabel = seasonStart
