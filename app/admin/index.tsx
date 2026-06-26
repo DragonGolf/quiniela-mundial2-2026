@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { triggerMatchSync, adminUpdateMatch, adminClearMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues, getAdminLeagues, updateLeaguePrize, AdminLeaguePrize, getKnockoutMultipliers, setKnockoutMultiplier, KnockoutMultiplier } from '@/lib/api';
+import { triggerMatchSync, adminUpdateMatch, adminClearMatch, getTournamentResults, saveTournamentResults, getGroupTeams, saveGroupResult, getGroupResults, getLeagueMembers, setLeagueMemberPaidById, deleteLeagueEntry, moveLeagueEntry, getAllLeagues, getAdminLeagues, updateLeaguePrize, AdminLeaguePrize, getKnockoutMultipliers, setKnockoutMultiplier, KnockoutMultiplier, createKnockoutContinuation } from '@/lib/api';
 import { exportPaymentList } from '@/lib/export';
 import { GroupResult, LeagueMember } from '@/lib/types';
 import { TournamentResult, Match } from '@/lib/types';
@@ -187,6 +187,24 @@ export default function AdminScreen() {
 
     setLoading(false);
     setRefreshing(false);
+  }
+
+  const [creatingKoFor, setCreatingKoFor] = useState<string | null>(null);
+  const [koCreateMsg, setKoCreateMsg] = useState('');
+  async function handleCreateKnockout(leagueId: string) {
+    setCreatingKoFor(leagueId);
+    setKoCreateMsg('');
+    try {
+      await createKnockoutContinuation(leagueId);
+      const leagues = await getAdminLeagues();
+      setAdminLeaguesList(leagues);
+      setKoCreateMsg('✅ Fase eliminatoria creada. Sus jugadores ya verán el aviso para avanzar.');
+      setTimeout(() => setKoCreateMsg(''), 4000);
+    } catch (e: any) {
+      setKoCreateMsg('❌ ' + (e?.message || 'Error'));
+    } finally {
+      setCreatingKoFor(null);
+    }
   }
 
   async function handleSaveKoMults() {
@@ -633,8 +651,19 @@ export default function AdminScreen() {
                 </View>
               </View>
             )}
+            {/* Crear fase eliminatoria de esta liga */}
+            <TouchableOpacity
+              style={styles.koCreateBtn}
+              onPress={() => handleCreateKnockout(l.id)}
+              disabled={creatingKoFor === l.id}
+            >
+              {creatingKoFor === l.id
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <Text style={styles.koCreateText}>🏆 Crear/abrir fase eliminatoria de esta liga</Text>}
+            </TouchableOpacity>
           </View>
         ))}
+        {koCreateMsg ? <Text style={[styles.paidMsg, { color: koCreateMsg.startsWith('✅') ? '#2e7d32' : Colors.accent }]}>{koCreateMsg}</Text> : null}
       </View>
 
       {/* Tournament results */}
@@ -925,6 +954,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, fontSize: 15, color: Colors.text, backgroundColor: Colors.background, textAlign: 'center',
   },
   koMax: { fontSize: 12, color: Colors.textSecondary, flex: 1 },
+  koCreateBtn: {
+    margin: 8, marginTop: 0, paddingVertical: 9, borderRadius: 8,
+    borderWidth: 1.5, borderColor: Colors.gold, alignItems: 'center',
+  },
+  koCreateText: { fontSize: 12, fontWeight: '700', color: '#9a6a08' },
   pzLeague: { borderWidth: 1, borderColor: Colors.border, borderRadius: 10, marginBottom: 8, overflow: 'hidden' },
   pzHead: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: Colors.background },
   pzName: { fontSize: 14, fontWeight: '700', color: Colors.text },

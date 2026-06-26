@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, FlatList, Text, StyleSheet, RefreshControl,
-  ActivityIndicator, SectionList,
+  ActivityIndicator, SectionList, TouchableOpacity,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart, getLeagueKnockoutCfg } from '@/lib/api';
+import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart, getLeagueKnockoutCfg, getKnockoutContinuation, joinKnockout, KnockoutContinuation } from '@/lib/api';
 import { MatchWithPrediction, Prediction } from '@/lib/types';
 import MatchCard from '@/components/MatchCard';
 import PredictionModal from '@/components/PredictionModal';
@@ -43,6 +43,10 @@ export default function MatchesScreen() {
   // Liga de fase eliminatoria (pick-em por partido)
   const [isKnockout, setIsKnockout] = useState(false);
   const [knockoutOnly, setKnockoutOnly] = useState(false);
+  // Invitación a avanzar a la fase eliminatoria de esta liga
+  const [koCont, setKoCont] = useState<KnockoutContinuation | null>(null);
+  const [joiningKo, setJoiningKo] = useState(false);
+  const [koJoinMsg, setKoJoinMsg] = useState('');
 
   async function load() {
     if (!profile) return;
@@ -65,11 +69,18 @@ export default function MatchesScreen() {
         setKnockoutOnly(cfg.knockoutOnly);
         // Liga "solo eliminatoria": ocultar partidos de grupo
         if (cfg.knockoutOnly) data = data.filter((m) => m.stage !== 'group');
+        // ¿Esta liga (de grupos) tiene fase eliminatoria para avanzar?
+        if (!cfg.isKnockout && profile?.id) {
+          setKoCont(await getKnockoutContinuation(activeLeague.id, profile.id));
+        } else {
+          setKoCont(null);
+        }
       } else {
         setOpenUntil(null);
         setSeasonStart(null);
         setIsKnockout(false);
         setKnockoutOnly(false);
+        setKoCont(null);
       }
       setMatches(data);
     } catch (e) {
@@ -92,6 +103,21 @@ export default function MatchesScreen() {
   );
 
   const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [profile, activeLeague?.member_id]);
+
+  async function handleJoinKnockout() {
+    if (!koCont || !activeLeague) return;
+    setJoiningKo(true);
+    setKoJoinMsg('');
+    try {
+      await joinKnockout(koCont.league_id, activeLeague.alias || 'Jugador');
+      setKoJoinMsg('✅ ¡Listo! Te uniste a la fase eliminatoria. Quedó pendiente de pago — acuérdalo con tu administrador. Cámbiate a esa quiniela arriba para empezar a llenarla.');
+      setKoCont({ ...koCont, joined: true });
+    } catch (e: any) {
+      setKoJoinMsg('❌ ' + (e?.message || 'No se pudo unir'));
+    } finally {
+      setJoiningKo(false);
+    }
+  }
 
   function handlePredictionSaved(pred: Prediction) {
     setMatches(prev =>
@@ -154,6 +180,24 @@ export default function MatchesScreen() {
   return (
     <View style={styles.container}>
       <InstallBanner />
+      {koCont && !koCont.joined && (
+        <View style={styles.koInvite}>
+          <Text style={styles.koInviteTitle}>🏆 ¿Avanzar a la Fase Eliminatoria?</Text>
+          <Text style={styles.koInviteText}>
+            Quiniela nueva y opcional para la fase final. Al unirte quedas pendiente de pago — acuerda el costo con tu administrador.
+          </Text>
+          {koJoinMsg ? (
+            <Text style={styles.koInviteMsg}>{koJoinMsg}</Text>
+          ) : (
+            <TouchableOpacity style={styles.koInviteBtn} onPress={handleJoinKnockout} disabled={joiningKo}>
+              {joiningKo ? <ActivityIndicator color={Colors.primary} size="small" /> : <Text style={styles.koInviteBtnText}>Sí, quiero avanzar</Text>}
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+      {koCont && koCont.joined && koJoinMsg ? (
+        <View style={styles.koInvite}><Text style={styles.koInviteMsg}>{koJoinMsg}</Text></View>
+      ) : null}
       {isKnockout && (
         <View style={styles.koBanner}>
           <Text style={styles.koBannerText}>
@@ -266,6 +310,12 @@ const styles = StyleSheet.create({
   seasonBannerText: { color: '#0d47a1', fontSize: 12, fontWeight: '600', textAlign: 'center', lineHeight: 16 },
   koBanner: { backgroundColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 16 },
   koBannerText: { color: Colors.white, fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 16 },
+  koInvite: { backgroundColor: '#1a3a5c', paddingVertical: 12, paddingHorizontal: 16 },
+  koInviteTitle: { color: Colors.gold, fontSize: 15, fontWeight: '800', marginBottom: 3 },
+  koInviteText: { color: 'rgba(255,255,255,0.85)', fontSize: 12, lineHeight: 17, marginBottom: 10 },
+  koInviteBtn: { backgroundColor: Colors.gold, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
+  koInviteBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  koInviteMsg: { color: Colors.white, fontSize: 13, fontWeight: '600', lineHeight: 18 },
   paidBanner: {
     backgroundColor: '#e8f5e9', paddingVertical: 7, paddingHorizontal: 16,
     alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#c8e6c9',

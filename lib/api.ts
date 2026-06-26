@@ -448,6 +448,47 @@ export async function getLeagueOpenUntil(leagueId: string, memberId?: string): P
   return candidates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 }
 
+// Continuación de eliminatoria de una liga de grupos (si existe + si ya entré)
+export interface KnockoutContinuation {
+  league_id: string; name: string; code: string; joined: boolean; member_id: string | null;
+}
+export async function getKnockoutContinuation(parentLeagueId: string, userId: string): Promise<KnockoutContinuation | null> {
+  const { data: ko } = await supabase
+    .from('leagues')
+    .select('id, name, code')
+    .eq('parent_league_id', parentLeagueId)
+    .eq('is_knockout', true)
+    .limit(1)
+    .maybeSingle();
+  if (!ko) return null;
+  const { data: mem } = await supabase
+    .from('league_members')
+    .select('id')
+    .eq('league_id', (ko as any).id)
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle();
+  return {
+    league_id: (ko as any).id, name: (ko as any).name, code: (ko as any).code,
+    joined: !!mem, member_id: (mem as any)?.id ?? null,
+  };
+}
+
+// Unirse a la fase eliminatoria (queda pendiente de pago)
+export async function joinKnockout(knockoutLeagueId: string, alias: string): Promise<string> {
+  const { data, error } = await supabase.rpc('join_knockout', {
+    p_knockout_league_id: knockoutLeagueId, p_alias: alias,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+// (Admin) crear la fase eliminatoria de una liga existente
+export async function createKnockoutContinuation(parentLeagueId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_create_knockout_continuation', { p_parent_league_id: parentLeagueId });
+  if (error) throw error;
+}
+
 // Config de eliminatoria de una liga
 export interface KnockoutCfg { isKnockout: boolean; knockoutOnly: boolean; }
 export async function getLeagueKnockoutCfg(leagueId: string): Promise<KnockoutCfg> {
