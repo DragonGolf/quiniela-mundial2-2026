@@ -3,115 +3,168 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl }
 import { supabase } from '@/lib/supabase';
 import { Colors } from '@/constants/Colors';
 
-interface BracketMatch {
+interface BMatch {
   id: string; round: string; ord: number; match_date: string | null;
   home_team: string; away_team: string; home_score: number | null; away_score: number | null;
   status: string; venue: string | null;
 }
 
-const ROUNDS: { key: string; label: string }[] = [
-  { key: 'round_of_32', label: 'Ronda de 32' },
-  { key: 'round_of_16', label: 'Octavos de Final' },
-  { key: 'quarterfinal', label: 'Cuartos de Final' },
-  { key: 'semifinal', label: 'Semifinal' },
-  { key: 'third_place', label: '3er Lugar' },
-  { key: 'final', label: 'Final' },
-];
+const MAIN_ROUNDS = ['round_of_32', 'round_of_16', 'quarterfinal', 'semifinal', 'final'];
+const ROUND_LABEL: Record<string, string> = {
+  round_of_32: 'Ronda de 32', round_of_16: 'Octavos', quarterfinal: 'Cuartos',
+  semifinal: 'Semis', final: 'Final', third_place: '3er Lugar',
+};
+const CHILD: Record<string, string> = {
+  round_of_16: 'round_of_32', quarterfinal: 'round_of_16', semifinal: 'quarterfinal', final: 'semifinal',
+};
 
-// Traduce los placeholders de ESPN a español
+const CARD_W = 132, CARD_H = 52, SLOT = 64, CONN = 26;
+const COL_W = CARD_W + CONN;
+
 function ph(name: string): string {
   if (!name) return 'Por definir';
-  let s = name;
-  s = s.replace(/Group ([A-L]) Winner/gi, '1° Grupo $1');
-  s = s.replace(/Group ([A-L]) 2nd Place/gi, '2° Grupo $1');
-  s = s.replace(/Third Place Group ([A-L/]+)/gi, '3° de Grupo $1');
-  s = s.replace(/Round of 32 (\d+) Winner/gi, 'Ganador R32 #$1');
-  s = s.replace(/Round of 16 (\d+) Winner/gi, 'Ganador 8vos #$1');
-  s = s.replace(/Quarterfinal (\d+) Winner/gi, 'Ganador CF #$1');
-  s = s.replace(/Semifinal (\d+) Winner/gi, 'Ganador SF #$1');
-  s = s.replace(/Semifinal (\d+) Loser/gi, 'Perdedor SF #$1');
-  return s;
+  return name
+    .replace(/Group ([A-L]) Winner/gi, '1° Gpo $1')
+    .replace(/Group ([A-L]) 2nd Place/gi, '2° Gpo $1')
+    .replace(/Third Place Group ([A-L/]+)/gi, '3° Gpo $1')
+    .replace(/Round of 32 (\d+) Winner/gi, 'Gana R32-$1')
+    .replace(/Round of 16 (\d+) Winner/gi, 'Gana 8vo-$1')
+    .replace(/Quarterfinal (\d+) Winner/gi, 'Gana CF-$1')
+    .replace(/Semifinal (\d+) Winner/gi, 'Gana SF-$1')
+    .replace(/Semifinal (\d+) Loser/gi, 'Pierde SF-$1');
 }
-
-function isPlaceholder(name: string): boolean {
-  return /Winner|Place|Loser|Group [A-L]/i.test(name || '');
+function isPh(n: string) { return /Winner|Place|Loser|Group [A-L]/i.test(n || ''); }
+function feederNum(text: string): number | null {
+  const m = (text || '').match(/(\d+)\s+Winner/i);
+  return m ? parseInt(m[1]) : null;
 }
 
 export default function BracketScreen() {
-  const [matches, setMatches] = useState<BracketMatch[]>([]);
+  const [all, setAll] = useState<BMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('bracket').select('*').order('round').order('ord');
-    setMatches((data as BracketMatch[]) || []);
-    setLoading(false);
-    setRefreshing(false);
+    setAll((data as BMatch[]) || []);
+    setLoading(false); setRefreshing(false);
   }, []);
-
   useEffect(() => { load(); }, [load]);
   const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [load]);
 
-  if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>;
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>;
+  if (all.length === 0) return <View style={styles.center}><Text style={styles.empty}>El bracket aparecerá cuando se definan los cruces de la eliminatoria.</Text></View>;
+
+  // Agrupar por ronda y resolver orden de árbol (los feeders quedan adyacentes)
+  const byRound: Record<string, BMatch[]> = {};
+  for (const m of all) (byRound[m.round] ??= []).push(m);
+  for (const r of Object.keys(byRound)) byRound[r].sort((a, b) => a.ord - b.ord);
+  const byNum = (round: string, num: number) => (byRound[round] || []).find((m) => m.ord === num - 1);
+
+  // Construir orden por nivel desde la final hacia abajo
+  const treeOrder: Record<string, BMatch[]> = {};
+  treeOrder['final'] = byRound['final'] || [];
+  for (let i = MAIN_ROUNDS.length - 1; i > 0; i--) {
+    const round = MAIN_ROUNDS[i];        // ej. final
+    const child = CHILD[round];          // ej. semifinal
+    const parents = treeOrder[round] || [];
+    const ordered: BMatch[] = [];
+    let ok = true;
+    for (const p of parents) {
+      const n1 = feederNum(p.home_team), n2 = feederNum(p.away_team);
+      const c1 = n1 ? byNum(child, n1) : null;
+      const c2 = n2 ? byNum(child, n2) : null;
+      if (c1) ordered.push(c1); else ok = false;
+      if (c2) ordered.push(c2); else ok = false;
+    }
+    treeOrder[child] = ok && ordered.length === (byRound[child] || []).length ? ordered : (byRound[child] || []);
   }
-  if (matches.length === 0) {
+
+  // Posiciones verticales (centradas entre feeders)
+  const pos: Record<string, number[]> = {};
+  const base = treeOrder['round_of_32'] || [];
+  pos['round_of_32'] = base.map((_, i) => i * SLOT + SLOT / 2);
+  for (let i = 1; i < MAIN_ROUNDS.length; i++) {
+    const round = MAIN_ROUNDS[i], child = MAIN_ROUNDS[i - 1];
+    const cp = pos[child];
+    pos[round] = (treeOrder[round] || []).map((_, j) => ((cp[2 * j] ?? 0) + (cp[2 * j + 1] ?? cp[2 * j] ?? 0)) / 2);
+  }
+  const totalH = Math.max((base.length || 1) * SLOT, 200);
+  const totalW = MAIN_ROUNDS.length * COL_W;
+
+  function Card({ m, x, y }: { m: BMatch; x: number; y: number }) {
+    const played = m.status !== 'upcoming' && m.home_score != null;
+    const hWon = played && m.home_score! > m.away_score!;
+    const aWon = played && m.away_score! > m.home_score!;
     return (
-      <View style={styles.center}>
-        <Text style={styles.empty}>El bracket aparecerá cuando se definan los cruces de la fase eliminatoria.</Text>
+      <View style={[styles.card, { left: x, top: y - CARD_H / 2 }]}>
+        {m.status === 'live' && <View style={styles.liveDot} />}
+        <View style={styles.cardRow}>
+          <Text style={[styles.cTeam, isPh(m.home_team) && styles.cPh, hWon && styles.cWin]} numberOfLines={1}>{ph(m.home_team)}</Text>
+          <Text style={[styles.cScore, hWon && styles.cWin]}>{played ? m.home_score : ''}</Text>
+        </View>
+        <View style={styles.cardDiv} />
+        <View style={styles.cardRow}>
+          <Text style={[styles.cTeam, isPh(m.away_team) && styles.cPh, aWon && styles.cWin]} numberOfLines={1}>{ph(m.away_team)}</Text>
+          <Text style={[styles.cScore, aWon && styles.cWin]}>{played ? m.away_score : ''}</Text>
+        </View>
       </View>
     );
   }
 
-  function fmtDate(iso: string | null) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) + ' · ' +
-      d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-  }
-
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-    >
-      {ROUNDS.map((r) => {
-        const ms = matches.filter((m) => m.round === r.key);
-        if (ms.length === 0) return null;
-        return (
-          <View key={r.key} style={styles.roundBlock}>
-            <Text style={styles.roundTitle}>{r.label}</Text>
-            {ms.map((m) => {
-              const played = m.status !== 'upcoming' && m.home_score != null;
-              const homeWon = played && (m.home_score! > m.away_score!);
-              const awayWon = played && (m.away_score! > m.home_score!);
-              return (
-                <View key={m.id} style={styles.matchCard}>
-                  <View style={styles.teamRow}>
-                    <Text style={[styles.team, isPlaceholder(m.home_team) && styles.teamPh, homeWon && styles.teamWin]} numberOfLines={1}>
-                      {ph(m.home_team)}
-                    </Text>
-                    <Text style={[styles.score, homeWon && styles.teamWin]}>{played ? m.home_score : ''}</Text>
+    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}>
+      {/* Encabezados de ronda */}
+      <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ width: totalW }}>
+        <View>
+          <View style={[styles.headerRow, { width: totalW }]}>
+            {MAIN_ROUNDS.map((r) => (
+              <Text key={r} style={[styles.colHeader, { width: COL_W }]}>{ROUND_LABEL[r]}</Text>
+            ))}
+          </View>
+          <View style={{ width: totalW, height: totalH }}>
+            {/* Líneas conectoras */}
+            {MAIN_ROUNDS.slice(1).map((round, idx) => {
+              const child = MAIN_ROUNDS[idx];
+              const cp = pos[child], pp = pos[round];
+              const xChildRight = idx * COL_W + CARD_W;
+              const xParentLeft = (idx + 1) * COL_W;
+              const xMid = xChildRight + CONN / 2;
+              return (pp || []).map((py, j) => {
+                const y1 = cp[2 * j], y2 = cp[2 * j + 1] ?? y1;
+                return (
+                  <View key={round + j}>
+                    <View style={[styles.lineH, { left: xChildRight, top: y1, width: CONN / 2 }]} />
+                    <View style={[styles.lineH, { left: xChildRight, top: y2, width: CONN / 2 }]} />
+                    <View style={[styles.lineV, { left: xMid, top: Math.min(y1, y2), height: Math.abs(y2 - y1) }]} />
+                    <View style={[styles.lineH, { left: xMid, top: py, width: xParentLeft - xMid }]} />
                   </View>
-                  <View style={styles.teamRow}>
-                    <Text style={[styles.team, isPlaceholder(m.away_team) && styles.teamPh, awayWon && styles.teamWin]} numberOfLines={1}>
-                      {ph(m.away_team)}
-                    </Text>
-                    <Text style={[styles.score, awayWon && styles.teamWin]}>{played ? m.away_score : ''}</Text>
-                  </View>
-                  <View style={styles.metaRow}>
-                    {m.status === 'live' && <Text style={styles.live}>● EN VIVO</Text>}
-                    <Text style={styles.meta} numberOfLines={1}>
-                      {fmtDate(m.match_date)}{m.venue ? `  📍 ${m.venue}` : ''}
-                    </Text>
-                  </View>
-                </View>
-              );
+                );
+              });
             })}
+            {/* Tarjetas */}
+            {MAIN_ROUNDS.map((round, idx) =>
+              (treeOrder[round] || []).map((m, j) => (
+                <Card key={m.id} m={m} x={idx * COL_W} y={pos[round][j]} />
+              ))
+            )}
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* 3er lugar aparte */}
+      {(byRound['third_place'] || []).map((m) => {
+        const played = m.status !== 'upcoming' && m.home_score != null;
+        return (
+          <View key={m.id} style={styles.thirdBox}>
+            <Text style={styles.thirdTitle}>🥉 Tercer Lugar</Text>
+            <Text style={styles.thirdTeams}>
+              {ph(m.home_team)} {played ? m.home_score : ''} – {played ? m.away_score : ''} {ph(m.away_team)}
+            </Text>
           </View>
         );
       })}
+      <Text style={styles.hint}>👉 Desliza horizontalmente para ver todas las rondas.</Text>
       <View style={{ height: 24 }} />
     </ScrollView>
   );
@@ -119,18 +172,26 @@ export default function BracketScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: 14 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, backgroundColor: Colors.background },
   empty: { fontSize: 15, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  roundBlock: { marginBottom: 18 },
-  roundTitle: { fontSize: 14, fontWeight: '800', color: Colors.primary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginLeft: 2 },
-  matchCard: { backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, padding: 12, marginBottom: 8 },
-  teamRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 3 },
-  team: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.text },
-  teamPh: { fontWeight: '500', color: Colors.textSecondary, fontStyle: 'italic' },
-  teamWin: { color: Colors.green, fontWeight: '800' },
-  score: { fontSize: 16, fontWeight: '800', color: Colors.text, width: 28, textAlign: 'right' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  live: { fontSize: 11, fontWeight: '800', color: Colors.accent },
-  meta: { flex: 1, fontSize: 11, color: Colors.textSecondary },
+  headerRow: { flexDirection: 'row', paddingVertical: 8, backgroundColor: Colors.primary },
+  colHeader: { fontSize: 11, fontWeight: '800', color: Colors.white, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.3 },
+  card: {
+    position: 'absolute', width: CARD_W, height: CARD_H, backgroundColor: Colors.card,
+    borderRadius: 8, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 7, justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1,
+  },
+  liveDot: { position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.accent },
+  cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 18 },
+  cardDiv: { height: 1, backgroundColor: '#eee', marginVertical: 1 },
+  cTeam: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.text },
+  cPh: { fontWeight: '500', color: Colors.textSecondary, fontStyle: 'italic' },
+  cWin: { color: Colors.green, fontWeight: '800' },
+  cScore: { fontSize: 12, fontWeight: '800', color: Colors.text, marginLeft: 4 },
+  lineH: { position: 'absolute', height: 1.5, backgroundColor: '#c5cad3' },
+  lineV: { position: 'absolute', width: 1.5, backgroundColor: '#c5cad3' },
+  thirdBox: { backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, padding: 14, margin: 14, marginBottom: 4 },
+  thirdTitle: { fontSize: 13, fontWeight: '800', color: Colors.primary, marginBottom: 4 },
+  thirdTeams: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  hint: { fontSize: 12, color: Colors.textSecondary, textAlign: 'center', marginTop: 10 },
 });
