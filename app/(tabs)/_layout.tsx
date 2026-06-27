@@ -146,6 +146,8 @@ function ReglasModal({ visible, onClose }: { visible: boolean; onClose: () => vo
 
 export default function TabsLayout() {
   const { activeLeague } = useLeague();
+  // En quinielas de eliminatoria no van Grupos ni Podio (solo pick-em por partido)
+  const isKnockout = (activeLeague as any)?.is_knockout === true;
   const { signOut } = useAuth();
   const [showReglas, setShowReglas] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
@@ -245,6 +247,7 @@ export default function TabsLayout() {
             title: 'Grupos',
             tabBarIcon: ({ focused }) => <TabIcon emoji="🗂" focused={focused} />,
             headerTitle: '🗂 Grupos',
+            href: isKnockout ? null : undefined, // ocultar en eliminatoria
           }}
         />
         <Tabs.Screen
@@ -253,6 +256,7 @@ export default function TabsLayout() {
             title: 'Podio',
             tabBarIcon: ({ focused }) => <TabIcon emoji="🏆" focused={focused} />,
             headerTitle: '🏆 Pódio',
+            href: isKnockout ? null : undefined, // ocultar en eliminatoria
           }}
         />
         <Tabs.Screen
