@@ -113,6 +113,29 @@ function ReglasModal({ visible, onClose }: { visible: boolean; onClose: () => vo
               </Text>
             </View>
 
+            {/* Fase Eliminatoria */}
+            <View style={st.section}>
+              <Text style={st.sectionTitle}>🏆 Fase Eliminatoria (quiniela aparte)</Text>
+              <View style={st.noticeRow}>
+                <Text style={st.noticeIcon}>⏱</Text>
+                <Text style={st.noticeText}>
+                  Se predice <Text style={st.bold}>cada partido por separado</Text>, hasta 1 hora antes de que inicie (no se llena todo de golpe).
+                </Text>
+              </View>
+              <View style={st.noticeRow}>
+                <Text style={st.noticeIcon}>📈</Text>
+                <Text style={st.noticeText}>
+                  Los puntos <Text style={st.bold}>valen más en cada ronda</Text>: Octavos ×2, Cuartos ×3, Semis ×4, Final ×5 (sobre los 7 pts base por partido).
+                </Text>
+              </View>
+              <View style={st.noticeRow}>
+                <Text style={st.noticeIcon}>⚽</Text>
+                <Text style={st.noticeText}>
+                  Cuenta el marcador <Text style={st.bold}>con el que terminó el partido, incluyendo tiempos extra</Text>. Los penales NO suman goles: un empate que se define por penales cuenta como ese empate, sin importar quién avance.
+                </Text>
+              </View>
+            </View>
+
             <View style={{ height: 16 }} />
           </ScrollView>
         </View>
