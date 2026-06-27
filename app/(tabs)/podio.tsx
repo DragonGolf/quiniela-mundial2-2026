@@ -150,6 +150,21 @@ export default function PodioScreen() {
     return <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>;
   }
 
+  // En la fase eliminatoria no hay podio (es solo pick-em por partido)
+  if (isKnockout) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ fontSize: 44, marginBottom: 12 }}>🏆</Text>
+        <Text style={{ fontSize: 17, fontWeight: '800', color: Colors.text, textAlign: 'center', marginBottom: 8 }}>
+          El podio no aplica en la Fase Eliminatoria
+        </Text>
+        <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 }}>
+          En esta quiniela los puntos se ganan partido por partido. Ve a la pestaña ⚽ Partidos para hacer tus predicciones, o 📊 Ver el Bracket.
+        </Text>
+      </View>
+    );
+  }
+
   const podiumPoints = getPodiumPoints();
   const hasResults = results && (results.champion || results.runner_up || results.third_place);
 

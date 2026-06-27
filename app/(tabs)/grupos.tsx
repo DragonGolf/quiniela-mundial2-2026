@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getGroupTeams, getGroupPredictions, saveGroupPrediction, getGroupResults, getMemberGroupPredictions, saveMemberGroupPrediction, getLeagueOpenUntil } from '@/lib/api';
+import { getGroupTeams, getGroupPredictions, saveGroupPrediction, getGroupResults, getMemberGroupPredictions, saveMemberGroupPrediction, getLeagueOpenUntil, getLeagueKnockoutCfg } from '@/lib/api';
 import { GroupPrediction, GroupResult } from '@/lib/types';
 import { Colors } from '@/constants/Colors';
 import FlagImage from '@/components/FlagImage';
@@ -134,20 +134,23 @@ export default function GruposScreen() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [openUntil, setOpenUntil] = useState<string | null>(null);
+  const [isKnockout, setIsKnockout] = useState(false);
   const locked = isPredictionsLockedFor(openUntil);
 
   const load = useCallback(async () => {
     if (!profile) return;
-    const [teams, preds, groupRes, oUntil] = await Promise.all([
+    const [teams, preds, groupRes, oUntil, koCfg] = await Promise.all([
       getGroupTeams(),
       activeLeague?.member_id
         ? getMemberGroupPredictions(activeLeague.member_id)
         : getGroupPredictions(profile.id),
       getGroupResults(),
       activeLeague?.id ? getLeagueOpenUntil(activeLeague.id, activeLeague.member_id) : Promise.resolve(null),
+      activeLeague?.id ? getLeagueKnockoutCfg(activeLeague.id) : Promise.resolve({ isKnockout: false, knockoutOnly: false }),
     ]);
     setGroupTeams(teams);
     setOpenUntil(oUntil);
+    setIsKnockout(koCfg.isKnockout);
 
     const selMap: Record<string, GroupState> = {};
     for (const p of preds) {
@@ -207,6 +210,21 @@ export default function GruposScreen() {
 
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>;
+  }
+
+  // En la fase eliminatoria no hay fase de grupos
+  if (isKnockout) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', padding: 28 }]}>
+        <Text style={{ fontSize: 44, marginBottom: 12 }}>🗂</Text>
+        <Text style={{ fontSize: 17, fontWeight: '800', color: Colors.text, textAlign: 'center', marginBottom: 8 }}>
+          Los grupos no aplican en la Fase Eliminatoria
+        </Text>
+        <Text style={{ fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 }}>
+          Aquí los puntos se ganan partido por partido. Ve a ⚽ Partidos para predecir, o 📊 Ver el Bracket.
+        </Text>
+      </View>
+    );
   }
 
   return (
