@@ -277,8 +277,59 @@ serve(async (req) => {
       // opcional: si falla, el admin puede llenar manualmente
     }
 
+    // ── BRACKET: poblar la tabla bracket desde ESPN (cruces, horarios, estadios) ──
+    let bracketRows = 0;
+    try {
+      // Rangos de fecha por ronda (calendario fijo del Mundial 2026)
+      const ROUND_RANGES: { round: string; from: string; to: string }[] = [
+        { round: 'round_of_32', from: '20260628', to: '20260703' },
+        { round: 'round_of_16', from: '20260704', to: '20260707' },
+        { round: 'quarterfinal', from: '20260709', to: '20260711' },
+        { round: 'semifinal', from: '20260714', to: '20260715' },
+        { round: 'third_place', from: '20260718', to: '20260718' },
+        { round: 'final', from: '20260719', to: '20260719' },
+      ];
+      const mapEspnStatus = (s: string): string => {
+        if (/FULL_TIME|FINAL/.test(s)) return 'finished';
+        if (/IN_PROGRESS|HALFTIME|FIRST_HALF|SECOND_HALF|EXTRA|PEN/.test(s)) return 'live';
+        return 'upcoming';
+      };
+      const upserts: any[] = [];
+      for (const rr of ROUND_RANGES) {
+        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=${rr.from}-${rr.to}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        let ord = 0;
+        for (const ev of (data.events ?? [])) {
+          const comp = ev.competitions?.[0];
+          if (!comp) continue;
+          const hc = (comp.competitors ?? []).find((c: any) => c.homeAway === 'home');
+          const ac = (comp.competitors ?? []).find((c: any) => c.homeAway === 'away');
+          if (!hc?.team?.displayName || !ac?.team?.displayName) continue;
+          const v = comp.venue;
+          const city = v?.address?.city ? `${v.address.city}${v.address.country ? ', ' + v.address.country : ''}` : '';
+          upserts.push({
+            id: String(ev.id), round: rr.round, ord: ord++,
+            match_date: ev.date ?? null,
+            home_team: normalizeName(hc.team.displayName),
+            away_team: normalizeName(ac.team.displayName),
+            home_score: hc.score != null && hc.score !== '' ? parseInt(hc.score) : null,
+            away_score: ac.score != null && ac.score !== '' ? parseInt(ac.score) : null,
+            status: mapEspnStatus(ev.status?.type?.name ?? ''),
+            venue: v?.fullName ? v.fullName + (city ? ' — ' + city : '') : null,
+          });
+        }
+      }
+      if (upserts.length > 0) {
+        await supabase.from('bracket').upsert(upserts);
+        bracketRows = upserts.length;
+      }
+    } catch (_bErr) {
+      // opcional: si falla, el resto del sync ya corrió
+    }
+
     return new Response(
-      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length, live: liveUpdated, groups: groupsFilled }),
+      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length, live: liveUpdated, groups: groupsFilled, bracket: bracketRows }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {

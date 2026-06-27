@@ -3,7 +3,7 @@ import {
   View, FlatList, Text, StyleSheet, RefreshControl,
   ActivityIndicator, SectionList, TouchableOpacity,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
 import { getMatches, getLeagueMatchesForMember, getLeagueOpenUntil, getLeagueSeasonStart, getLeagueKnockoutCfg, getKnockoutContinuation, joinKnockout, KnockoutContinuation } from '@/lib/api';
@@ -200,11 +200,16 @@ export default function MatchesScreen() {
         <View style={styles.koInvite}><Text style={styles.koInviteMsg}>{koJoinMsg}</Text></View>
       ) : null}
       {isKnockout && (
-        <View style={styles.koBanner}>
-          <Text style={styles.koBannerText}>
-            🏆 Fase Eliminatoria · Predice cada partido hasta 1h antes. Entre más avanza la ronda, más valen los puntos (Octavos ×2, Cuartos ×3, Semis ×4, Final ×5).
-          </Text>
-        </View>
+        <>
+          <View style={styles.koBanner}>
+            <Text style={styles.koBannerText}>
+              🏆 Fase Eliminatoria · Predice cada partido hasta 1h antes. Entre más avanza la ronda, más valen los puntos (Octavos ×2, Cuartos ×3, Semis ×4, Final ×5).
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.bracketBtn} onPress={() => router.push('/bracket' as any)}>
+            <Text style={styles.bracketBtnText}>📊 Ver el Bracket (cruces, horarios y estadios)</Text>
+          </TouchableOpacity>
+        </>
       )}
       {seasonStartFuture && (
         <View style={styles.seasonBanner}>
@@ -311,6 +316,8 @@ const styles = StyleSheet.create({
   seasonBannerText: { color: '#0d47a1', fontSize: 12, fontWeight: '600', textAlign: 'center', lineHeight: 16 },
   koBanner: { backgroundColor: Colors.gold, paddingVertical: 8, paddingHorizontal: 16 },
   koBannerText: { color: Colors.white, fontSize: 12, fontWeight: '700', textAlign: 'center', lineHeight: 16 },
+  bracketBtn: { backgroundColor: Colors.primary, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
+  bracketBtnText: { color: Colors.white, fontSize: 13, fontWeight: '800' },
   koInvite: { backgroundColor: '#1a3a5c', paddingVertical: 12, paddingHorizontal: 16 },
   koInviteTitle: { color: Colors.gold, fontSize: 15, fontWeight: '800', marginBottom: 3 },
   koInviteText: { color: 'rgba(255,255,255,0.85)', fontSize: 12, lineHeight: 17, marginBottom: 10 },

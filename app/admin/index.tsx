@@ -68,6 +68,8 @@ export default function AdminScreen() {
   const [movingId, setMovingId] = useState<string | null>(null);
   // Ligas colapsadas (por leagueId) en la sección de pagos
   const [collapsedLeagues, setCollapsedLeagues] = useState<Record<string, boolean>>({});
+  // Ligas de eliminatoria (para el panel "quién avanzó")
+  const [koLeagues, setKoLeagues] = useState<{ id: string; name: string }[]>([]);
   // Multiplicadores de eliminatoria
   const [koMults, setKoMults] = useState<KnockoutMultiplier[]>([]);
   const [koDraft, setKoDraft] = useState<Record<string, string>>({});
@@ -173,6 +175,12 @@ export default function AdminScreen() {
     } catch (e) {
       console.error('getAdminLeagues error:', e);
     }
+
+    // Ligas de eliminatoria (para "quién avanzó")
+    try {
+      const { data: kol } = await supabase.from('leagues').select('id, name').eq('is_knockout', true).order('name');
+      setKoLeagues((kol as any[]) || []);
+    } catch (e) { console.error('knockout leagues error:', e); }
 
     // Multiplicadores de eliminatoria
     try {
@@ -580,6 +588,44 @@ export default function AdminScreen() {
         })()}
       </View>
 
+      {/* Quién avanzó a Eliminatoria */}
+      {koLeagues.length > 0 && (
+        <View style={styles.trSection}>
+          <Text style={styles.trTitle}>🏆 Quién avanzó a Eliminatoria</Text>
+          <Text style={styles.trHint}>Jugadores que se unieron a cada fase eliminatoria. "Sin pago" = pendiente de cobrar.</Text>
+          {koLeagues.map((kl) => {
+            const rows: { alias: string; name: string; paid: boolean }[] = [];
+            for (const u of usersWithEntries) {
+              for (const e of u.entries) {
+                if (((e.league as any)?.id ?? e.league_id) === kl.id) {
+                  rows.push({ alias: e.alias || u.realName, name: u.realName, paid: e.is_paid });
+                }
+              }
+            }
+            rows.sort((a, b) => a.alias.localeCompare(b.alias));
+            const paidN = rows.filter((r) => r.paid).length;
+            return (
+              <View key={kl.id} style={styles.koAdvBlock}>
+                <View style={styles.koAdvHead}>
+                  <Text style={styles.koAdvName}>{kl.name}</Text>
+                  <Text style={styles.koAdvCount}>{rows.length} avanzaron · {paidN} pagados</Text>
+                </View>
+                {rows.length === 0 ? (
+                  <Text style={styles.trHint}>Nadie se ha unido aún.</Text>
+                ) : rows.map((r, i) => (
+                  <View key={i} style={styles.koAdvRow}>
+                    <Text style={styles.koAdvPlayer}>{r.alias}{r.name !== r.alias ? ` · ${r.name}` : ''}</Text>
+                    <View style={[styles.koAdvBadge, r.paid ? styles.koAdvPaid : styles.koAdvUnpaid]}>
+                      <Text style={styles.koAdvBadgeText}>{r.paid ? '✓ Pagó' : 'Sin pago'}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       {/* Multiplicadores de eliminatoria */}
       {koMults.length > 0 && (
         <View style={styles.trSection}>
@@ -946,6 +992,16 @@ const styles = StyleSheet.create({
   entryExpandHint: { fontSize: 11, color: Colors.textSecondary },
   entryEmail: { fontSize: 12, color: Colors.primary, marginBottom: 3, fontStyle: 'italic' },
   entryActions: { alignItems: 'flex-end', gap: 6 },
+  koAdvBlock: { borderWidth: 1, borderColor: Colors.border, borderRadius: 10, marginBottom: 10, overflow: 'hidden' },
+  koAdvHead: { backgroundColor: Colors.primary, paddingHorizontal: 12, paddingVertical: 8 },
+  koAdvName: { fontSize: 14, fontWeight: '800', color: Colors.white },
+  koAdvCount: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
+  koAdvRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  koAdvPlayer: { flex: 1, fontSize: 13, color: Colors.text },
+  koAdvBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  koAdvPaid: { backgroundColor: '#e8f5e9' },
+  koAdvUnpaid: { backgroundColor: '#fff3e0' },
+  koAdvBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.text },
   koRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   koLabel: { fontSize: 14, fontWeight: '600', color: Colors.text, width: 110 },
   koX: { fontSize: 16, color: Colors.textSecondary, fontWeight: '700' },
