@@ -56,6 +56,7 @@ export default function AdminScreen() {
   const [totalMatches, setTotalMatches] = useState(0);
   const [totalGroupMatches, setTotalGroupMatches] = useState(0);
   const [totalKnockoutMatches, setTotalKnockoutMatches] = useState(0);
+  const [totalBracketMatches, setTotalBracketMatches] = useState(0);
   // memberId → { matchPreds, hasGroups, hasPodio }
   const [predStats, setPredStats] = useState<Record<string, { matchPreds: number; hasGroups: boolean; hasPodio: boolean }>>({});
   // userId → email
@@ -186,6 +187,12 @@ export default function AdminScreen() {
       const { data: kol } = await supabase.from('leagues').select('id, name').eq('is_knockout', true).order('name');
       setKoLeagues((kol as any[]) || []);
     } catch (e) { console.error('knockout leagues error:', e); }
+
+    // Total de partidos del bracket completo (32 en el Mundial)
+    try {
+      const { count } = await supabase.from('bracket').select('id', { count: 'exact', head: true });
+      setTotalBracketMatches(count ?? 0);
+    } catch (e) { console.error('bracket count error:', e); }
 
     // Multiplicadores de eliminatoria
     try {
@@ -425,6 +432,7 @@ export default function AdminScreen() {
           <Text style={styles.paidCounter}>{paidCount}/{totalEntries} pagados</Text>
         </View>
         <Text style={styles.trHint}>Todos los jugadores registrados · Toca para aprobar/quitar pago por quiniela</Text>
+        <Text style={styles.trHint}>⚽ Eliminatoria: hechas / disponibles ahora / total del bracket (ej. 1/4/32)</Text>
         <TouchableOpacity
           style={styles.exportPayBtn}
           onPress={async () => {
@@ -528,7 +536,9 @@ export default function AdminScreen() {
                         <View style={styles.predRow}>
                           <View style={[styles.predDot, allDone ? styles.predDotGreen : hasAny ? styles.predDotYellow : styles.predDotRed]} />
                           <Text style={styles.predText}>
-                            ⚽ {ps.matchPreds}/{ligaTotal}
+                            ⚽ {isKoLiga
+                              ? `${ps.matchPreds}/${ligaTotal}/${totalBracketMatches || ligaTotal}`
+                              : `${ps.matchPreds}/${ligaTotal}`}
                             {isKoLiga ? '' : `  🗂 ${ps.hasGroups ? '✓' : '✗'}`}
                             {'  '}🏆 {ps.hasPodio ? '✓' : '✗'}
                           </Text>
