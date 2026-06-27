@@ -54,6 +54,8 @@ export default function AdminScreen() {
   const [paidMsg, setPaidMsg] = useState('');
   const [matchMsg, setMatchMsg] = useState('');
   const [totalMatches, setTotalMatches] = useState(0);
+  const [totalGroupMatches, setTotalGroupMatches] = useState(0);
+  const [totalKnockoutMatches, setTotalKnockoutMatches] = useState(0);
   // memberId → { matchPreds, hasGroups, hasPodio }
   const [predStats, setPredStats] = useState<Record<string, { matchPreds: number; hasGroups: boolean; hasPodio: boolean }>>({});
   // userId → email
@@ -100,6 +102,9 @@ export default function AdminScreen() {
 
     setMatches(matchData || []);
     setTotalMatches((matchData || []).length);
+    // Totales por tipo: grupo (ligas normales) vs eliminatoria (ligas KO)
+    setTotalGroupMatches((matchData || []).filter((m: any) => m.stage === 'group').length);
+    setTotalKnockoutMatches((matchData || []).filter((m: any) => m.stage !== 'group').length);
     setGroupTeams(teams);
     setTournamentResult(tr);
     if (tr) {
@@ -476,6 +481,9 @@ export default function AdminScreen() {
           </View>
           {ligaGroups.map(liga => {
             const ligaPaid = liga.rows.filter(r => r.entry.is_paid).length;
+            // ¿Es liga de eliminatoria? → el total es de partidos de eliminatoria
+            const isKoLiga = koLeagues.some(k => k.id === liga.leagueId);
+            const ligaTotal = isKoLiga ? totalKnockoutMatches : totalGroupMatches;
             const isCollapsed = collapsedLeagues[liga.leagueId] ?? false;
             return (
               <View key={liga.leagueId} style={styles.ligaSection}>
@@ -498,8 +506,11 @@ export default function AdminScreen() {
                 {/* Filas de jugadores en esta liga */}
                 {!isCollapsed && liga.rows.map(({ entry, realName }) => {
                   const ps = predStats[entry.id] ?? { matchPreds: 0, hasGroups: false, hasPodio: false };
-                  const hasAny = ps.matchPreds > 0 || ps.hasGroups || ps.hasPodio;
-                  const allDone = ps.matchPreds === totalMatches && ps.hasGroups && ps.hasPodio;
+                  const hasAny = ps.matchPreds > 0 || (!isKoLiga && (ps.hasGroups || ps.hasPodio));
+                  // En eliminatoria solo cuentan los partidos (no grupos)
+                  const allDone = isKoLiga
+                    ? (ligaTotal > 0 && ps.matchPreds >= ligaTotal)
+                    : (ps.matchPreds === ligaTotal && ps.hasGroups && ps.hasPodio);
                   const email = emailMap[entry.user_id] ?? '';
                   const isExpanded = expandedUser === entry.id;
                   return (
@@ -517,8 +528,8 @@ export default function AdminScreen() {
                         <View style={styles.predRow}>
                           <View style={[styles.predDot, allDone ? styles.predDotGreen : hasAny ? styles.predDotYellow : styles.predDotRed]} />
                           <Text style={styles.predText}>
-                            ⚽ {ps.matchPreds}/{totalMatches}
-                            {'  '}🗂 {ps.hasGroups ? '✓' : '✗'}
+                            ⚽ {ps.matchPreds}/{ligaTotal}
+                            {isKoLiga ? '' : `  🗂 ${ps.hasGroups ? '✓' : '✗'}`}
                             {'  '}🏆 {ps.hasPodio ? '✓' : '✗'}
                           </Text>
                         </View>
