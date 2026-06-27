@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Partido en vivo — maqueta</title>
+<style>
+  :root{
+    --primary:#1a3a5c; --accent:#e8173c; --gold:#f5a623; --green:#27ae60;
+    --bg:#f0f2f5; --card:#fff; --text:#1a1a2e; --text2:#666677; --border:#e0e0e0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+  body{background:#c3c9d2;display:flex;gap:28px;justify-content:center;align-items:flex-start;padding:28px;flex-wrap:wrap;}
+  .phone{width:390px;background:var(--bg);border-radius:36px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);border:10px solid #11151c;}
+  .caption{text-align:center;font-size:13px;color:#3a4250;font-weight:700;margin-top:12px;}
+
+  /* Header / scoreboard */
+  .scorebar{background:var(--primary);padding:14px 16px 18px;color:#fff;position:relative;}
+  .toprow{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .stage{font-size:11px;color:rgba(255,255,255,.6);font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+  .livepill{display:flex;align-items:center;gap:5px;background:var(--accent);padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.5px;}
+  .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:.3;}}
+  .score{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:8px;}
+  .team{flex:1;text-align:center;}
+  .flag{font-size:40px;line-height:1;}
+  .tname{font-size:14px;font-weight:700;margin-top:4px;}
+  .nums{font-size:46px;font-weight:800;letter-spacing:2px;display:flex;align-items:center;gap:10px;}
+  .minute{text-align:center;font-size:12px;color:var(--gold);font-weight:800;margin-top:6px;}
+
+  /* My prediction band */
+  .myband{background:#16314e;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,.08);}
+  .myband .lbl{font-size:11px;color:rgba(255,255,255,.7);font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+  .myband .pred{font-size:15px;color:#fff;font-weight:800;}
+  .ptsbadge{background:var(--gold);color:#1a1a2e;font-weight:800;font-size:13px;padding:4px 10px;border-radius:8px;}
+  .ptsbadge.zero{background:rgba(255,255,255,.18);color:#fff;}
+
+  /* Body */
+  .body{padding:14px 14px 22px;}
+  .secTitle{font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:4px 4px 8px;}
+  .hint{font-size:11px;color:var(--text2);margin:0 4px 12px;line-height:1.4;}
+
+  /* League block */
+  .league{background:var(--card);border-radius:14px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);border:1px solid var(--border);}
+  .lhead{background:var(--primary);color:#fff;padding:9px 13px;display:flex;justify-content:space-between;align-items:center;}
+  .lname{font-size:14px;font-weight:800;}
+  .lcount{font-size:11px;background:rgba(255,255,255,.18);padding:3px 8px;border-radius:8px;font-weight:700;}
+
+  table{width:100%;border-collapse:collapse;}
+  th{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;text-align:left;padding:8px 12px 6px;font-weight:800;}
+  th.c,td.c{text-align:center;}
+  td{padding:9px 12px;border-top:1px solid #f0f0f0;font-size:13px;vertical-align:middle;}
+  .qname{font-weight:700;color:var(--text);}
+  .qpred{font-weight:800;color:var(--primary);font-variant-numeric:tabular-nums;}
+  .pts{font-weight:800;font-size:13px;padding:3px 9px;border-radius:7px;display:inline-block;min-width:30px;}
+  .p7{background:#d6f5e0;color:#13864a;}
+  .p4,.p5,.p6{background:#fdeccd;color:#9a6a08;}
+  .p1,.p2,.p3{background:#e9edf2;color:#4a5568;}
+  .p0{background:#fde2e6;color:#b3243a;}
+  .me{background:#fff8e8;}
+  .me .qname::after{content:' (tú)';font-size:10px;color:var(--gold);font-weight:800;}
+  .leader td{position:relative;}
+  .crown{font-size:12px;margin-left:4px;}
+  .foot{font-size:10px;color:var(--text2);text-align:center;padding:8px;background:#fafbfc;border-top:1px solid #f0f0f0;}
+</style>
+</head>
+<body>
+
+<!-- PANTALLA 1 -->
+<div>
+<div class="phone">
+  <div class="scorebar">
+    <div class="topR" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span class="stage">Fase de Grupos · Grupo A</span>
+      <span class="livepill"><span class="dot"></span>EN VIVO</span>
+    </div>
+    <div class="score">
+      <div class="team"><div class="flag">🇲🇽</div><div class="tname">México</div></div>
+      <div class="nums">2<span style="color:rgba(255,255,255,.5)">-</span>1</div>
+      <div class="team"><div class="flag">🇿🇦</div><div class="tname">Sudáfrica</div></div>
+    </div>
+    <div class="minute">⏱ 67'</div>
+  </div>
+
+  <div class="myband">
+    <div>
+      <div class="lbl">Tu predicción</div>
+      <div class="pred">México 2 - 1 Sudáfrica</div>
+    </div>
+    <div style="text-align:right">
+      <div class="lbl" style="margin-bottom:3px">Puntos si acaba así</div>
+      <span class="ptsbadge">7 pts ✓</span>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="secTitle">📋 Predicciones de este partido</div>
+    <div class="hint">Así va cada quiniela si el partido termina <b>2-1</b>. Los puntos se actualizan con el marcador en vivo.</div>
+
+    <!-- Liga Golf -->
+    <div class="league">
+      <div class="lhead"><span class="lname">⛳ Golf</span><span class="lcount">6 quinielas</span></div>
+      <table>
+        <thead><tr><th>Quiniela</th><th class="c">Predijo</th><th class="c">Puntos</th></tr></thead>
+        <tbody>
+          <tr class="me leader"><td class="qname">Pansa <span class="crown">👑</span></td><td class="c qpred">2 - 1</td><td class="c"><span class="pts p7">7</span></td></tr>
+          <tr><td class="qname">Claudia</td><td class="c qpred">1 - 0</td><td class="c"><span class="pts p4">4</span></td></tr>
+          <tr><td class="qname">Isaac Optimista</td><td class="c qpred">3 - 1</td><td class="c"><span class="pts p4">4</span></td></tr>
+          <tr><td class="qname">Moy</td><td class="c qpred">2 - 0</td><td class="c"><span class="pts p4">4</span></td></tr>
+          <tr><td class="qname">Kicho</td><td class="c qpred">2 - 2</td><td class="c"><span class="pts p1">1</span></td></tr>
+          <tr><td class="qname">Beto</td><td class="c qpred">0 - 2</td><td class="c"><span class="pts p0">0</span></td></tr>
+        </tbody>
+      </table>
+      <div class="foot">El 👑 marca quién va ganando este partido en la liga</div>
+    </div>
+
+    <!-- Liga Familia -->
+    <div class="league">
+      <div class="lhead"><span class="lname">👨‍👩‍👧 Familia</span><span class="lcount">4 quinielas</span></div>
+      <table>
+        <thead><tr><th>Quiniela</th><th class="c">Predijo</th><th class="c">Puntos</th></tr></thead>
+        <tbody>
+          <tr class="leader"><td class="qname">Sandra <span class="crown">👑</span></td><td class="c qpred">2 - 1</td><td class="c"><span class="pts p7">7</span></td></tr>
+          <tr><td class="qname">Jacobo</td><td class="c qpred">2 - 0</td><td class="c"><span class="pts p4">4</span></td></tr>
+          <tr><td class="qname">Uri</td><td class="c qpred">1 - 1</td><td class="c"><span class="pts p1">1</span></td></tr>
+          <tr><td class="qname">David King</td><td class="c qpred">0 - 0</td><td class="c"><span class="pts p0">0</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="caption">Pantalla 1 — Partido EN VIVO (marcador 2-1, min 67')</div>
+</div>
+
+<!-- PANTALLA 2: arranque 0-0 -->
+<div>
+<div class="phone">
+  <div class="scorebar">
+    <div class="topR" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span class="stage">Fase de Grupos · Grupo A</span>
+      <span class="livepill"><span class="dot"></span>EN VIVO</span>
+    </div>
+    <div class="score">
+      <div class="team"><div class="flag">🇲🇽</div><div class="tname">México</div></div>
+      <div class="nums">0<span style="color:rgba(255,255,255,.5)">-</span>0</div>
+      <div class="team"><div class="flag">🇿🇦</div><div class="tname">Sudáfrica</div></div>
+    </div>
+    <div class="minute">⏱ 12'</div>
+  </div>
+
+  <div class="myband">
+    <div>
+      <div class="lbl">Tu predicción</div>
+      <div class="pred">México 2 - 1 Sudáfrica</div>
+    </div>
+    <div style="text-align:right">
+      <div class="lbl" style="margin-bottom:3px">Puntos si acaba así</div>
+      <span class="ptsbadge zero">0 pts</span>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="secTitle">📋 Predicciones de este partido</div>
+    <div class="hint">Empieza <b>0-0</b>. Quien predijo empate va arriba; tu 2-1 sumaría al meter México.</div>
+
+    <div class="league">
+      <div class="lhead"><span class="lname">⛳ Golf</span><span class="lcount">6 quinielas</span></div>
+      <table>
+        <thead><tr><th>Quiniela</th><th class="c">Predijo</th><th class="c">Puntos</th></tr></thead>
+        <tbody>
+          <tr class="leader"><td class="qname">Kicho <span class="crown">👑</span></td><td class="c qpred">2 - 2</td><td class="c"><span class="pts p3">3</span></td></tr>
+          <tr><td class="qname">Beto</td><td class="c qpred">0 - 2</td><td class="c"><span class="pts p1">1</span></td></tr>
+          <tr class="me"><td class="qname">Pansa</td><td class="c qpred">2 - 1</td><td class="c"><span class="pts p0">0</span></td></tr>
+          <tr><td class="qname">Claudia</td><td class="c qpred">1 - 0</td><td class="c"><span class="pts p0">0</span></td></tr>
+          <tr><td class="qname">Isaac Optimista</td><td class="c qpred">3 - 1</td><td class="c"><span class="pts p0">0</span></td></tr>
+          <tr><td class="qname">Moy</td><td class="c qpred">2 - 0</td><td class="c"><span class="pts p0">0</span></td></tr>
+        </tbody>
+      </table>
+      <div class="foot">Los puntos cambian en vivo con cada gol ⚽</div>
+    </div>
+  </div>
+</div>
+<div class="caption">Pantalla 2 — Mismo partido al arranque (0-0)</div>
+</div>
+
+</body>
+</html>

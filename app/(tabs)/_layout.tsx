@@ -242,6 +242,15 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
+          name="bracket"
+          options={{
+            title: 'Bracket',
+            tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} />,
+            headerTitle: '🏆 Bracket',
+            href: isKnockout ? undefined : null, // solo en eliminatoria
+          }}
+        />
+        <Tabs.Screen
           name="grupos"
           options={{
             title: 'Grupos',

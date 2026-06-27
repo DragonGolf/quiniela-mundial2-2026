@@ -200,16 +200,11 @@ export default function MatchesScreen() {
         <View style={styles.koInvite}><Text style={styles.koInviteMsg}>{koJoinMsg}</Text></View>
       ) : null}
       {isKnockout && (
-        <>
-          <View style={styles.koBanner}>
-            <Text style={styles.koBannerText}>
-              🏆 Fase Eliminatoria · Predice cada partido hasta 1h antes. Entre más avanza la ronda, más valen los puntos (Octavos ×2, Cuartos ×3, Semis ×4, Final ×5).
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.bracketBtn} onPress={() => router.push('/bracket' as any)}>
-            <Text style={styles.bracketBtnText}>📊 Ver el Bracket (cruces, horarios y estadios)</Text>
-          </TouchableOpacity>
-        </>
+        <View style={styles.koBanner}>
+          <Text style={styles.koBannerText}>
+            🏆 Fase Eliminatoria · Predice cada partido hasta 1h antes. Entre más avanza la ronda, más valen los puntos (Octavos ×2, Cuartos ×3, Semis ×4, Final ×5). Mira el 📊 Bracket abajo.
+          </Text>
+        </View>
       )}
       {seasonStartFuture && (
         <View style={styles.seasonBanner}>
