@@ -15,6 +15,7 @@ import {
 interface MatchInfo {
   id: number; home_team: string; away_team: string;
   home_flag: string; away_flag: string; group_name: string | null; match_date: string;
+  status?: string;
 }
 
 const GROUP_ORDER = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
@@ -45,7 +46,7 @@ export default function RegistroScreen() {
         getRegistroPodium(activeLeague.id),
         getRegistroGroups(activeLeague.id),
         getRegistroMatches(activeLeague.id),
-        supabase.from('matches').select('id, home_team, away_team, home_flag, away_flag, group_name, match_date').order('match_date'),
+        supabase.from('matches').select('id, home_team, away_team, home_flag, away_flag, group_name, match_date, status').order('match_date'),
         supabase.from('leagues').select('entry_price, prize_description, organizer_commission').eq('id', activeLeague.id).single(),
       ]);
       setMembers(mem);
@@ -94,8 +95,21 @@ export default function RegistroScreen() {
   const repartir = pozo - fee;
   const fmt = (n: number) => '$' + n.toLocaleString('es-MX', { maximumFractionDigits: 0 });
 
+  const isKnockout = (activeLeague as any)?.is_knockout === true;
+
   function canSeePreds(memberId: string) {
     return locked || memberId === activeLeague!.member_id;
+  }
+
+  // Un partido "ya cerró" (sus predicciones se revelan) si ya inició/terminó
+  // o faltan menos de 30 min. En eliminatoria gateamos partido por partido,
+  // porque la edición sigue abierta aunque el candado global ya pasó.
+  function matchRevealed(matchId: number): boolean {
+    const info = matchInfo[matchId];
+    if (!info) return false;
+    if (info.status && info.status !== 'upcoming') return true;
+    const minsUntil = (new Date(info.match_date).getTime() - Date.now()) / 60000;
+    return minsUntil < 30;
   }
 
   return (
@@ -144,13 +158,19 @@ export default function RegistroScreen() {
       </View>
 
       {/* Aviso de visibilidad */}
-      {!locked && (
+      {isKnockout ? (
+        <View style={styles.noticeLock}>
+          <Text style={styles.noticeLockText}>
+            🔒 En la eliminatoria, las predicciones de cada partido se revelan 30 min antes de que empiece. Por ahora solo ves las tuyas.
+          </Text>
+        </View>
+      ) : !locked ? (
         <View style={styles.noticeLock}>
           <Text style={styles.noticeLockText}>
             🔒 Las predicciones de los demás se revelan al cierre: {LOCK_DATE_STR}. Por ahora solo ves la tuya.
           </Text>
         </View>
-      )}
+      ) : null}
 
       {/* Participantes */}
       <Text style={styles.secTitle}>📝 Quinielas registradas</Text>
@@ -213,40 +233,61 @@ export default function RegistroScreen() {
                       </View>
                     ) : <Text style={styles.dim}>Sin grupos.</Text>}
 
-                    {/* Partidos */}
-                    <Text style={styles.blockTitle}>⚽ Partidos ({mpreds.length})</Text>
-                    {mpreds.length === 0 ? (
-                      <Text style={styles.dim}>Sin predicciones de partidos.</Text>
-                    ) : showMatchesFor === m.member_id ? (
-                      <View>
-                        {mpreds
-                          .slice()
-                          .sort((a, b) => {
-                            const da = matchInfo[a.match_id]?.match_date || '';
-                            const db = matchInfo[b.match_id]?.match_date || '';
-                            return da.localeCompare(db);
-                          })
-                          .map((mp) => {
-                            const info = matchInfo[mp.match_id];
-                            if (!info) return null;
-                            return (
-                              <View key={mp.match_id} style={styles.matchRow}>
-                                <Text style={styles.matchTeams} numberOfLines={1}>
-                                  {info.home_flag} {info.home_team} vs {info.away_team} {info.away_flag}
+                    {/* Partidos — los ajenos solo se ven si el partido ya cerró (30 min antes) */}
+                    {(() => {
+                      const visiblePreds = isMine
+                        ? mpreds
+                        : mpreds.filter((mp) => matchRevealed(mp.match_id));
+                      const hiddenCount = mpreds.length - visiblePreds.length;
+                      return (
+                        <>
+                          <Text style={styles.blockTitle}>
+                            ⚽ Partidos ({visiblePreds.length}{hiddenCount > 0 ? ` · ${hiddenCount} 🔒` : ''})
+                          </Text>
+                          {mpreds.length === 0 ? (
+                            <Text style={styles.dim}>Sin predicciones de partidos.</Text>
+                          ) : visiblePreds.length === 0 ? (
+                            <Text style={styles.lockedMsg}>
+                              🔒 Sus predicciones se revelan 30 min antes de cada partido.
+                            </Text>
+                          ) : showMatchesFor === m.member_id ? (
+                            <View>
+                              {visiblePreds
+                                .slice()
+                                .sort((a, b) => {
+                                  const da = matchInfo[a.match_id]?.match_date || '';
+                                  const db = matchInfo[b.match_id]?.match_date || '';
+                                  return da.localeCompare(db);
+                                })
+                                .map((mp) => {
+                                  const info = matchInfo[mp.match_id];
+                                  if (!info) return null;
+                                  return (
+                                    <View key={mp.match_id} style={styles.matchRow}>
+                                      <Text style={styles.matchTeams} numberOfLines={1}>
+                                        {info.home_flag} {info.home_team} vs {info.away_team} {info.away_flag}
+                                      </Text>
+                                      <Text style={styles.matchScore}>{mp.pred_home} - {mp.pred_away}</Text>
+                                    </View>
+                                  );
+                                })}
+                              {hiddenCount > 0 && (
+                                <Text style={[styles.dim, { marginTop: 6 }]}>
+                                  🔒 {hiddenCount} predicción{hiddenCount === 1 ? '' : 'es'} de partidos aún abiertos se revelan 30 min antes.
                                 </Text>
-                                <Text style={styles.matchScore}>{mp.pred_home} - {mp.pred_away}</Text>
-                              </View>
-                            );
-                          })}
-                        <TouchableOpacity onPress={() => setShowMatchesFor(null)} style={styles.linkBtn}>
-                          <Text style={styles.linkBtnText}>Ocultar partidos ▲</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity onPress={() => setShowMatchesFor(m.member_id)} style={styles.linkBtn}>
-                        <Text style={styles.linkBtnText}>Ver {mpreds.length} predicciones de partidos ▼</Text>
-                      </TouchableOpacity>
-                    )}
+                              )}
+                              <TouchableOpacity onPress={() => setShowMatchesFor(null)} style={styles.linkBtn}>
+                                <Text style={styles.linkBtnText}>Ocultar partidos ▲</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            <TouchableOpacity onPress={() => setShowMatchesFor(m.member_id)} style={styles.linkBtn}>
+                              <Text style={styles.linkBtnText}>Ver {visiblePreds.length} predicciones de partidos ▼</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      );
+                    })()}
                   </>
                 )}
               </View>
