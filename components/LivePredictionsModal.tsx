@@ -78,6 +78,10 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
 
   const isLive = match.status === 'live';
   const isFinished = match.status === 'finished';
+  // Las predicciones de los DEMÁS solo se revelan cuando el partido cerró
+  // (ya inició/terminó, o faltan menos de 30 min). Antes: nadie las ve.
+  const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
+  const revealed = isLive || isFinished || minsUntil < 30;
 
   // Mi predicción y mis puntos (primera fila is_mine que se encuentre)
   let myRow: { ph: number; pa: number } | null = null;
@@ -173,6 +177,16 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
         {/* Lista por liga */}
         {loading ? (
           <View style={styles.centered}><ActivityIndicator size="large" color={Colors.primary} /></View>
+        ) : !revealed ? (
+          <View style={styles.centered}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>🔒</Text>
+            <Text style={styles.emptyText}>
+              Las predicciones de los demás se revelan{'\n'}<Text style={{ fontWeight: '800' }}>30 minutos antes</Text> del partido.
+            </Text>
+            <Text style={[styles.emptyText, { marginTop: 8, fontSize: 13 }]}>
+              Mientras tanto, nadie puede ver lo que pusieron los otros — para que sea justo.
+            </Text>
+          </View>
         ) : leagues.length === 0 ? (
           <View style={styles.centered}>
             <Text style={styles.emptyText}>Aún no hay predicciones para este partido en tus ligas</Text>
