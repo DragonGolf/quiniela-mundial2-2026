@@ -540,7 +540,7 @@ export default function AdminScreen() {
                               ? `${ps.matchPreds}/${ligaTotal}/${totalBracketMatches || ligaTotal}`
                               : `${ps.matchPreds}/${ligaTotal}`}
                             {isKoLiga ? '' : `  🗂 ${ps.hasGroups ? '✓' : '✗'}`}
-                            {'  '}🏆 {ps.hasPodio ? '✓' : '✗'}
+                            {isKoLiga ? '' : `  🏆 ${ps.hasPodio ? '✓' : '✗'}`}
                           </Text>
                         </View>
                       </View>
