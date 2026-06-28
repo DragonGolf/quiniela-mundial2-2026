@@ -62,6 +62,8 @@ END; $$;
 GRANT EXECUTE ON FUNCTION get_registro_groups(uuid) TO authenticated;
 
 -- 4. Predicciones de partidos de todas las quinielas de la liga
+--    Privacidad: las predicciones AJENAS solo se devuelven si el partido ya
+--    "cerró" (en vivo/terminado, o faltan menos de 30 min). Las propias siempre.
 CREATE OR REPLACE FUNCTION get_registro_matches(p_league_id uuid)
 RETURNS TABLE(member_id uuid, match_id int, pred_home int, pred_away int)
 LANGUAGE plpgsql SECURITY DEFINER AS $$
@@ -74,6 +76,12 @@ BEGIN
   SELECT lp.league_member_id, lp.match_id, lp.pred_home, lp.pred_away
   FROM league_predictions lp
   JOIN league_members lm ON lm.id = lp.league_member_id
-  WHERE lm.league_id = p_league_id;
+  JOIN matches mt ON mt.id = lp.match_id
+  WHERE lm.league_id = p_league_id
+    AND (
+      lm.user_id = v_uid                                  -- tus propias quinielas: siempre
+      OR mt.status <> 'upcoming'                          -- ya inició/terminó
+      OR mt.match_date <= now() + interval '30 minutes'   -- faltan <30 min
+    );
 END; $$;
 GRANT EXECUTE ON FUNCTION get_registro_matches(uuid) TO authenticated;
