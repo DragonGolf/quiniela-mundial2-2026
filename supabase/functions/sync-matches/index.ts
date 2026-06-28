@@ -90,10 +90,17 @@ serve(async (req) => {
 
     const { data: existing } = await supabase
       .from('matches')
-      .select('id, api_match_id, status, home_score, away_score')
+      .select('id, api_match_id, status, home_score, away_score, home_team, away_team, stage')
       .not('api_match_id', 'is', null);
 
     const existingMap = new Map((existing ?? []).map((m: any) => [m.api_match_id, m]));
+    // Mapa por par de equipos SOLO para eliminatoria: evita que football-data
+    // duplique un cruce que ya insertamos desde ESPN (claves: "Casa|Visita").
+    const teamPairMap = new Map(
+      (existing ?? [])
+        .filter((m: any) => m.stage !== 'group')
+        .map((m: any) => [m.home_team + '|' + m.away_team, m])
+    );
     const STATUS_RANK: Record<string, number> = { upcoming: 0, live: 1, finished: 2 };
 
     const toInsert: any[] = [];
@@ -134,15 +141,40 @@ serve(async (req) => {
         }
         toUpdate.push({ id: prev.id, record });
       } else {
-        toInsert.push({
-          home_team: homeName, away_team: awayName,
-          home_flag: getFlag(homeName), away_flag: getFlag(awayName),
-          match_date: m.utcDate, stage: mapStage(m.stage),
-          group_name: m.group?.replace('GROUP_', '') ?? null,
-          venue: m.venue ?? null, status: apiStatus,
-          home_score: apiHome, away_score: apiAway,
-          api_match_id: String(m.id),
-        });
+        // Sin coincidencia por id. Si es eliminatoria y ya existe el cruce
+        // (insertado desde ESPN), ACTUALIZAR esa fila y adoptar el id de
+        // football-data — así no se duplica el partido.
+        const koPrev = mapStage(m.stage) !== 'group'
+          ? teamPairMap.get(homeName + '|' + awayName)
+          : null;
+        if (koPrev) {
+          const record: any = {
+            home_team: homeName, away_team: awayName,
+            home_flag: getFlag(homeName), away_flag: getFlag(awayName),
+            match_date: m.utcDate, stage: mapStage(m.stage),
+            group_name: m.group?.replace('GROUP_', '') ?? null,
+            api_match_id: String(m.id),
+          };
+          if (m.venue) record.venue = m.venue;
+          if (apiHome !== null && apiAway !== null) {
+            record.home_score = apiHome;
+            record.away_score = apiAway;
+          }
+          if ((STATUS_RANK[apiStatus] ?? 0) > (STATUS_RANK[koPrev.status] ?? 0)) {
+            record.status = apiStatus;
+          }
+          toUpdate.push({ id: koPrev.id, record });
+        } else {
+          toInsert.push({
+            home_team: homeName, away_team: awayName,
+            home_flag: getFlag(homeName), away_flag: getFlag(awayName),
+            match_date: m.utcDate, stage: mapStage(m.stage),
+            group_name: m.group?.replace('GROUP_', '') ?? null,
+            venue: m.venue ?? null, status: apiStatus,
+            home_score: apiHome, away_score: apiAway,
+            api_match_id: String(m.id),
+          });
+        }
       }
     }
 
@@ -279,6 +311,7 @@ serve(async (req) => {
 
     // ── BRACKET: poblar la tabla bracket desde ESPN (cruces, horarios, estadios) ──
     let bracketRows = 0;
+    let koMatchesAdded = 0;
     try {
       // Rangos de fecha por ronda (calendario fijo del Mundial 2026)
       const ROUND_RANGES: { round: string; from: string; to: string }[] = [
@@ -324,12 +357,39 @@ serve(async (req) => {
         await supabase.from('bracket').upsert(upserts);
         bracketRows = upserts.length;
       }
+
+      // ── Llevar los cruces YA DEFINIDOS a la tabla matches (para predicción) ──
+      // football-data define los cruces lento; ESPN es rápido. Aquí insertamos
+      // los partidos con equipos REALES que aún no existan en matches, para que
+      // aparezcan para predecir en cuanto se definen (sin esperar a football-data).
+      const isPlaceholder = (n: string) =>
+        /Winner|Loser|Place|Runner|Group\s+[A-L]\b|Round of\s*\d|Semifinal\s*\d|Quarterfinal\s*\d|TBD|Por definir/i.test(n || '');
+      const realKo = upserts.filter((u) => !isPlaceholder(u.home_team) && !isPlaceholder(u.away_team));
+      if (realKo.length > 0) {
+        const { data: koExisting } = await supabase
+          .from('matches').select('home_team, away_team').neq('stage', 'group');
+        const haveKey = new Set((koExisting ?? []).map((m: any) => m.home_team + '|' + m.away_team));
+        const koInsert = realKo
+          .filter((u) => !haveKey.has(u.home_team + '|' + u.away_team))
+          .map((u) => ({
+            home_team: u.home_team, away_team: u.away_team,
+            home_flag: getFlag(u.home_team), away_flag: getFlag(u.away_team),
+            match_date: u.match_date, stage: u.round, group_name: null,
+            venue: u.venue, status: u.status,
+            home_score: u.home_score, away_score: u.away_score,
+            api_match_id: 'espn-' + u.id,
+          }));
+        if (koInsert.length > 0) {
+          await supabase.from('matches').insert(koInsert);
+          koMatchesAdded = koInsert.length;
+        }
+      }
     } catch (_bErr) {
       // opcional: si falla, el resto del sync ya corrió
     }
 
     return new Response(
-      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length, live: liveUpdated, groups: groupsFilled, bracket: bracketRows }),
+      JSON.stringify({ inserted: toInsert.length, updated: toUpdate.length, live: liveUpdated, groups: groupsFilled, bracket: bracketRows, koAdded: koMatchesAdded }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {
