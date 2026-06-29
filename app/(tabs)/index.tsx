@@ -69,6 +69,10 @@ export default function MatchesScreen() {
         setKnockoutOnly(cfg.knockoutOnly);
         // Liga "solo eliminatoria": ocultar partidos de grupo
         if (cfg.knockoutOnly) data = data.filter((m) => m.stage !== 'group');
+        // Liga de grupos (primera fase): ocultar los partidos de eliminatoria,
+        // que no le corresponden a quien no avanzó (evita confusión: los ven
+        // con opción de predecir pero no los deja).
+        else if (!cfg.isKnockout) data = data.filter((m) => m.stage === 'group');
         // ¿Esta liga (de grupos) tiene fase eliminatoria para avanzar?
         if (!cfg.isKnockout && profile?.id) {
           setKoCont(await getKnockoutContinuation(activeLeague.id, profile.id));
