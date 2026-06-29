@@ -102,14 +102,14 @@ export default function RegistroScreen() {
   }
 
   // Un partido "ya cerró" (sus predicciones se revelan) si ya inició/terminó
-  // o faltan menos de 30 min. En eliminatoria gateamos partido por partido,
+  // o faltan menos de 15 min. En eliminatoria gateamos partido por partido,
   // porque la edición sigue abierta aunque el candado global ya pasó.
   function matchRevealed(matchId: number): boolean {
     const info = matchInfo[matchId];
     if (!info) return false;
     if (info.status && info.status !== 'upcoming') return true;
     const minsUntil = (new Date(info.match_date).getTime() - Date.now()) / 60000;
-    return minsUntil < 30;
+    return minsUntil < 15;
   }
 
   return (
@@ -161,7 +161,7 @@ export default function RegistroScreen() {
       {isKnockout ? (
         <View style={styles.noticeLock}>
           <Text style={styles.noticeLockText}>
-            🔒 En la eliminatoria, las predicciones de cada partido se revelan 30 min antes de que empiece. Por ahora solo ves las tuyas.
+            🔒 En la eliminatoria, las predicciones de cada partido se revelan 15 min antes de que empiece. Por ahora solo ves las tuyas.
           </Text>
         </View>
       ) : !locked ? (
@@ -233,7 +233,7 @@ export default function RegistroScreen() {
                       </View>
                     ) : <Text style={styles.dim}>Sin grupos.</Text>}
 
-                    {/* Partidos — los ajenos solo se ven si el partido ya cerró (30 min antes) */}
+                    {/* Partidos — los ajenos solo se ven si el partido ya cerró (15 min antes) */}
                     {(() => {
                       const visiblePreds = isMine
                         ? mpreds
@@ -248,7 +248,7 @@ export default function RegistroScreen() {
                             <Text style={styles.dim}>Sin predicciones de partidos.</Text>
                           ) : visiblePreds.length === 0 ? (
                             <Text style={styles.lockedMsg}>
-                              🔒 Sus predicciones se revelan 30 min antes de cada partido.
+                              🔒 Sus predicciones se revelan 15 min antes de cada partido.
                             </Text>
                           ) : showMatchesFor === m.member_id ? (
                             <View>
@@ -273,7 +273,7 @@ export default function RegistroScreen() {
                                 })}
                               {hiddenCount > 0 && (
                                 <Text style={[styles.dim, { marginTop: 6 }]}>
-                                  🔒 {hiddenCount} predicción{hiddenCount === 1 ? '' : 'es'} de partidos aún abiertos se revelan 30 min antes.
+                                  🔒 {hiddenCount} predicción{hiddenCount === 1 ? '' : 'es'} de partidos aún abiertos se revelan 15 min antes.
                                 </Text>
                               )}
                               <TouchableOpacity onPress={() => setShowMatchesFor(null)} style={styles.linkBtn}>

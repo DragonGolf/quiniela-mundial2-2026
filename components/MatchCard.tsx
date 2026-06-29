@@ -25,7 +25,7 @@ function getCardBg(match: MatchWithPrediction): string {
 function isWithin1Hour(match: MatchWithPrediction): boolean {
   if (match.status !== 'upcoming') return false;
   const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
-  return minsUntil < 30;
+  return minsUntil < 15;
 }
 
 export default function MatchCard({ match, onPress, onViewPredictions, notInLeague }: Props) {
@@ -129,7 +129,7 @@ export default function MatchCard({ match, onPress, onViewPredictions, notInLeag
         ) : isUpcoming && !isLocked ? (
           <Text style={styles.noPrediction}>Toca para poner tu predicción →</Text>
         ) : isUpcoming && isLocked ? (
-          <Text style={styles.lockedLabel}>🔒 Cerrado (menos de 30 min) · Sin predicción</Text>
+          <Text style={styles.lockedLabel}>🔒 Cerrado (menos de 15 min) · Sin predicción</Text>
         ) : (
           <Text style={[styles.noPrediction, { color: Colors.accent }]}>Sin predicción</Text>
         )}

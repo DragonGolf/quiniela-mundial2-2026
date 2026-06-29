@@ -142,10 +142,10 @@ export default function MatchesScreen() {
     // el cierre global (ya cerraron).
     const isKoMatch = match.stage !== 'group';
     if (!(isKnockout && isKoMatch) && isPredictionsLockedFor(openUntil)) return true;
-    // Los partidos ya iniciados o a <30 min SIEMPRE quedan bloqueados
+    // Los partidos ya iniciados o a <15 min SIEMPRE quedan bloqueados
     if (match.status !== 'upcoming') return true;
     const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
-    return minsUntil < 30;
+    return minsUntil < 15;
   }
 
   function handlePress(match: MatchWithPrediction) {

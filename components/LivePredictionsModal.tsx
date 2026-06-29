@@ -79,9 +79,9 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
   const isLive = match.status === 'live';
   const isFinished = match.status === 'finished';
   // Las predicciones de los DEMÁS solo se revelan cuando el partido cerró
-  // (ya inició/terminó, o faltan menos de 30 min). Antes: nadie las ve.
+  // (ya inició/terminó, o faltan menos de 15 min). Antes: nadie las ve.
   const minsUntil = (new Date(match.match_date).getTime() - Date.now()) / 60000;
-  const revealed = isLive || isFinished || minsUntil < 30;
+  const revealed = isLive || isFinished || minsUntil < 15;
 
   // Mi predicción y mis puntos (primera fila is_mine que se encuentre)
   let myRow: { ph: number; pa: number } | null = null;
@@ -181,7 +181,7 @@ export default function LivePredictionsModal({ match, visible, onClose }: Props)
           <View style={styles.centered}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>🔒</Text>
             <Text style={styles.emptyText}>
-              Las predicciones de los demás se revelan{'\n'}<Text style={{ fontWeight: '800' }}>30 minutos antes</Text> del partido.
+              Las predicciones de los demás se revelan{'\n'}<Text style={{ fontWeight: '800' }}>15 minutos antes</Text> del partido.
             </Text>
             <Text style={[styles.emptyText, { marginTop: 8, fontSize: 13 }]}>
               Mientras tanto, nadie puede ver lo que pusieron los otros — para que sea justo.
