@@ -111,8 +111,19 @@ serve(async (req) => {
       const homeName = normalizeName(m.homeTeam.name);
       const awayName = normalizeName(m.awayTeam.name);
       const apiStatus = mapStatus(m.status);
-      const apiHome = m.score?.fullTime?.home ?? null;
-      const apiAway = m.score?.fullTime?.away ?? null;
+      // Reglamento de eliminatoria: el resultado cuenta al final del TIEMPO
+      // EXTRA, SIN penales. football-data mete la tanda dentro de fullTime
+      // (fullTime = regularTime + extraTime + penalties), así que en partidos
+      // por penales usamos regularTime + extraTime (el marcador antes de penales).
+      let apiHome = m.score?.fullTime?.home ?? null;
+      let apiAway = m.score?.fullTime?.away ?? null;
+      if (m.score?.duration === 'PENALTY_SHOOTOUT') {
+        const rt = m.score.regularTime, et = m.score.extraTime;
+        if (rt?.home != null && rt?.away != null) {
+          apiHome = rt.home + (et?.home ?? 0);
+          apiAway = rt.away + (et?.away ?? 0);
+        }
+      }
 
       const prev = existingMap.get(String(m.id));
       if (prev) {
