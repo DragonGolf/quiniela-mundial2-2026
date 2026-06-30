@@ -119,13 +119,13 @@ function ReglasModal({ visible, onClose }: { visible: boolean; onClose: () => vo
               <View style={st.noticeRow}>
                 <Text style={st.noticeIcon}>⏱</Text>
                 <Text style={st.noticeText}>
-                  Se predice <Text style={st.bold}>cada partido por separado</Text>, hasta 1 hora antes de que inicie (no se llena todo de golpe).
+                  Se predice <Text style={st.bold}>cada partido por separado</Text>, hasta 15 minutos antes de que inicie (no se llena todo de golpe).
                 </Text>
               </View>
               <View style={st.noticeRow}>
                 <Text style={st.noticeIcon}>📈</Text>
                 <Text style={st.noticeText}>
-                  Los puntos <Text style={st.bold}>valen más en cada ronda</Text>: Octavos ×2, Cuartos ×3, Semis ×4, Final ×5 (sobre los 7 pts base por partido).
+                  Los puntos <Text style={st.bold}>valen más conforme avanza la ronda</Text>: Octavos ×2, Cuartos ×3, Semis ×3, Final ×4 (sobre los 7 pts base por partido).
                 </Text>
               </View>
               <View style={st.noticeRow}>

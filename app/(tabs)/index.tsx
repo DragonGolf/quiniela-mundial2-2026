@@ -138,7 +138,7 @@ export default function MatchesScreen() {
     // Partido anterior al arranque de la liga: bloqueado (no cuenta)
     if (isBeforeSeason(match)) return true;
     // Pick-em: en liga de eliminatoria, los partidos de eliminatoria se
-    // predicen hasta 1h antes (sin cierre global). Los de grupo sí respetan
+    // predicen hasta 15 min antes (sin cierre global). Los de grupo sí respetan
     // el cierre global (ya cerraron).
     const isKoMatch = match.stage !== 'group';
     if (!(isKnockout && isKoMatch) && isPredictionsLockedFor(openUntil)) return true;
@@ -206,7 +206,7 @@ export default function MatchesScreen() {
       {isKnockout && (
         <View style={styles.koBanner}>
           <Text style={styles.koBannerText}>
-            🏆 Fase Eliminatoria · Predice cada partido hasta 1h antes. Entre más avanza la ronda, más valen los puntos (Octavos ×2, Cuartos ×3, Semis ×4, Final ×5). Mira el 📊 Bracket abajo.
+            🏆 Fase Eliminatoria · Predice cada partido hasta 15 min antes. Entre más avanza la ronda, más valen los puntos (Octavos ×2, Cuartos ×3, Semis ×3, Final ×4). Mira el 📊 Bracket abajo.
           </Text>
         </View>
       )}
