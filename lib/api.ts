@@ -611,6 +611,16 @@ export async function getRegistroMembers(leagueId: string): Promise<RegistroMemb
   }));
 }
 
+// ¿Hay algún partido EN VIVO ahora? Conteo sin traer filas (head) = mínimo egress.
+// Se usa para sondear solo durante partidos y no malgastar datos el resto del día.
+export async function hasLiveMatch(): Promise<boolean> {
+  const { count } = await supabase
+    .from('matches')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'live');
+  return (count ?? 0) > 0;
+}
+
 export interface RegistroPodium {
   member_id: string; champion: string; runner_up: string; third_place: string; top_scorer: string | null;
 }

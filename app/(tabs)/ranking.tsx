@@ -6,7 +6,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useLeague } from '@/lib/league';
-import { getLeagueRanking } from '@/lib/api';
+import { getLeagueRanking, hasLiveMatch } from '@/lib/api';
 import { LeagueRankingEntry } from '@/lib/types';
 import RankingRow from '@/components/RankingRow';
 import EmptyState from '@/components/EmptyState';
@@ -34,12 +34,18 @@ export default function RankingScreen() {
 
   useEffect(() => { load(); }, [activeLeague]);
 
-  // Auto-refresh: al entrar a la pestaña y cada 60s mientras esté visible
+  // Auto-refresh: carga al entrar y luego cada 60s SOLO si hay un partido en
+  // vivo (el ranking solo cambia con marcadores en juego). Ahorra egress.
   useFocusEffect(
     useCallback(() => {
       load();
-      const interval = setInterval(load, 60000);
-      return () => clearInterval(interval);
+      let interval: ReturnType<typeof setInterval> | undefined;
+      let cancelled = false;
+      hasLiveMatch().then((live) => {
+        if (cancelled || !live) return;
+        interval = setInterval(load, 60000);
+      });
+      return () => { cancelled = true; if (interval) clearInterval(interval); };
     }, [activeLeague])
   );
 

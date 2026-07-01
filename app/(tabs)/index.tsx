@@ -97,13 +97,16 @@ export default function MatchesScreen() {
 
   useEffect(() => { load(); }, [profile, activeLeague?.member_id]);
 
-  // Auto-refresh: al entrar a la pestaña y cada 60s (marcadores en vivo y puntos)
+  // Auto-refresh: carga al entrar y luego cada 60s SOLO si hay algún partido
+  // EN VIVO. Fuera de partidos no recarga nada (ahorra muchísimo egress).
+  const hasLiveMatch = matches.some((m) => m.status === 'live');
   useFocusEffect(
     useCallback(() => {
       load();
+      if (!hasLiveMatch) return; // sin nada en vivo → no sondear
       const interval = setInterval(load, 60000);
       return () => clearInterval(interval);
-    }, [profile, activeLeague?.member_id])
+    }, [profile, activeLeague?.member_id, hasLiveMatch])
   );
 
   const onRefresh = useCallback(() => { setRefreshing(true); load(); }, [profile, activeLeague?.member_id]);
