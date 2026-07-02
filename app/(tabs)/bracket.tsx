@@ -59,7 +59,26 @@ export default function BracketScreen() {
   const byRound: Record<string, BMatch[]> = {};
   for (const m of all) (byRound[m.round] ??= []).push(m);
   for (const r of Object.keys(byRound)) byRound[r].sort((a, b) => a.ord - b.ord);
-  const byNum = (round: string, num: number) => (byRound[round] || []).find((m) => m.ord === num - 1);
+  // "Round of 32 N Winner": la N de ESPN sigue el orden de sus IDs de evento
+  // dentro de la ronda (secuenciales), NO el orden por fecha. Rankear por id.
+  const byIdRank: Record<string, BMatch[]> = {};
+  for (const r of Object.keys(byRound)) {
+    byIdRank[r] = [...byRound[r]].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+  }
+  const byNum = (round: string, num: number) => (byIdRank[round] || [])[num - 1];
+
+  // Resolver el partido de la ronda anterior que alimenta un slot.
+  // Con placeholder ("Gana R32-11") se usa el número; cuando el partido ya se
+  // jugó el slot muestra el equipo REAL (ej. "Canada") → buscar el partido de
+  // la ronda anterior donde jugó ese equipo (cada equipo aparece solo una vez).
+  const findChild = (childRound: string, slotText: string): BMatch | null => {
+    const n = feederNum(slotText);
+    if (n) return byNum(childRound, n) ?? null;
+    if (!slotText || isPh(slotText)) return null;
+    return (byRound[childRound] || []).find(
+      (m) => m.home_team === slotText || m.away_team === slotText
+    ) ?? null;
+  };
 
   // Construir orden por nivel desde la final hacia abajo
   const treeOrder: Record<string, BMatch[]> = {};
@@ -71,11 +90,10 @@ export default function BracketScreen() {
     const ordered: BMatch[] = [];
     let ok = true;
     for (const p of parents) {
-      const n1 = feederNum(p.home_team), n2 = feederNum(p.away_team);
-      const c1 = n1 ? byNum(child, n1) : null;
-      const c2 = n2 ? byNum(child, n2) : null;
+      const c1 = findChild(child, p.home_team);
+      const c2 = findChild(child, p.away_team);
       if (c1) ordered.push(c1); else ok = false;
-      if (c2) ordered.push(c2); else ok = false;
+      if (c2 && c2 !== c1) ordered.push(c2); else if (!c2) ok = false;
     }
     treeOrder[child] = ok && ordered.length === (byRound[child] || []).length ? ordered : (byRound[child] || []);
   }
